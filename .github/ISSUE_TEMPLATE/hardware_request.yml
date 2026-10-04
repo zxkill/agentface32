@@ -1,0 +1,28 @@
+name: Hardware profile request
+description: Request support for another ESP32 board/display
+labels: [hardware]
+body:
+  - type: input
+    id: board
+    attributes:
+      label: Board
+      placeholder: Exact manufacturer and model
+    validations:
+      required: true
+  - type: input
+    id: display
+    attributes:
+      label: Display/controller
+      placeholder: e.g. GC9A01 240x240, ILI9341 320x240
+    validations:
+      required: true
+  - type: textarea
+    id: pinout
+    attributes:
+      label: Pinout / documentation link
+    validations:
+      required: true
+  - type: textarea
+    id: test
+    attributes:
+      label: Can you test firmware on the real hardware?

@@ -1,0 +1,52 @@
+name: Bug report
+description: Something is not working as expected
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting a problem. Please include enough hardware detail to reproduce it.
+  - type: input
+    id: version
+    attributes:
+      label: AgentFace32 version
+      placeholder: v0.6.0 / main commit
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: PlatformIO environment
+      options:
+        - m5stack-basic
+        - esp32dev-ssd1306
+        - esp32dev-ssd1306-max98357
+        - esp32dev-sh1106
+        - esp32s3-ssd1306
+        - lilygo-t-display
+        - esp32dev-st7789
+        - custom/other
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Exact hardware
+      description: Board revision, display controller/module, audio module, power source.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: logs
+    attributes:
+      label: Serial output / `/health`
+      render: text

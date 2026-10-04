@@ -1,0 +1,162 @@
+{
+  "description": "Send Codex lifecycle events to AgentFace32. Replace DEVICE_IP first.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --max-time 2 -o /dev/null -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >/dev/null 2>&1 || true",
+            "commandWindows": "cmd.exe /d /c \"curl.exe -sS --max-time 2 -o NUL -X POST -H Content-Type:application/json --data-binary @- http://DEVICE_IP/hook/codex >NUL 2>&1 & exit /b 0\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
