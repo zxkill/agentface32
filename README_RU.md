@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <strong>Claude Code и Codex — прямо на физическом дисплее ESP32.</strong><br>
-  <a href="docs/images/agentface32-demo.mp4">Посмотреть стабилизированную MP4-версию</a>
+  <strong>Демонстрация на реальном M5Stack Basic — AgentFace32 следит за живой сессией Codex.</strong><br>
+  <a href="docs/images/agentface32-demo.mp4">Посмотреть MP4-версию в полном качестве</a>
 </p>
 
 

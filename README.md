@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <strong>Claude Code and Codex activity, live on a physical ESP32 display.</strong><br>
-  <a href="docs/images/agentface32-demo.mp4">Watch the stabilized MP4 demo</a>
+  <strong>Real hardware demo on M5Stack Basic — AgentFace32 following a live Codex session.</strong><br>
+  <a href="docs/images/agentface32-demo.mp4">Watch the full-quality MP4 demo</a>
 </p>
 
 AgentFace32 sits on your desk and reacts to what your coding agents are doing. It reads lifecycle hooks from **Claude Code** and **Codex**, then turns them into an expressive face, a status line, the current file or command, task time, tool count, alerts, and optional sound.
