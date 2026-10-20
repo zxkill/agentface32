@@ -64,6 +64,15 @@
   #endif
 #endif
 
+// Adjustable display brightness: M5 backlight, OLED contrast, PWM on TFT_BL.
+#if defined(DISPLAY_BACKEND_M5) || defined(DISPLAY_BACKEND_U8G2)
+  #define HARDWARE_HAS_BRIGHTNESS 1
+#elif defined(DISPLAY_BACKEND_TFT_ESPI) && defined(TFT_BL)
+  #if TFT_BL >= 0
+    #define HARDWARE_HAS_BRIGHTNESS 1
+  #endif
+#endif
+
 // Audio backends for generic boards.
 #define AGENT_AUDIO_NONE 0
 #define AGENT_AUDIO_PIEZO 1

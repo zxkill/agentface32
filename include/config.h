@@ -34,8 +34,31 @@
 // Codex can emit PermissionRequest even when its policy auto-approves the
 // action moments later. We wait before alerting the human to suppress false
 // attention notifications. Override this in config.local.h if desired.
+// Wi-Fi setup access point (first boot, menu "Wi-Fi setup", or fallback when
+// the saved network is unreachable). SSID is "<prefix>-XXXX" from the MAC.
+#ifndef SETUP_AP_PREFIX
+  #define SETUP_AP_PREFIX "AgentFace32"
+#endif
+// WPA2 password for the setup AP (8+ characters). Shown on the display.
+#ifndef SETUP_AP_PASSWORD
+  #define SETUP_AP_PASSWORD "agentface"
+#endif
+// Start the setup AP when the saved network has been unreachable this long.
+#ifndef WIFI_SETUP_FALLBACK_MS
+  #define WIFI_SETUP_FALLBACK_MS 45000UL
+#endif
+
 #ifndef CODEX_PERMISSION_GRACE_MS
   #define CODEX_PERMISSION_GRACE_MS 10000UL
+#endif
+
+// After the initial grace period, wait this long before showing Attention
+// for a Codex permission request. During this post-grace window the device
+// stays quiet; if auto-approval resolves during this time, no alert fires.
+// If the permission is still unresolved after grace + post-grace, Attention
+// is shown. Override in config.local.h if needed.
+#ifndef CODEX_PERMISSION_POST_GRACE_MS
+  #define CODEX_PERMISSION_POST_GRACE_MS 8000UL
 #endif
 
 #ifndef ONE_SHOT_STATE_MS

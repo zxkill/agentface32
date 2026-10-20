@@ -4,15 +4,14 @@
 #include <M5GFX.h>
 #include <math.h>
 #include "face.h"
-#include "locale.h"
+#include "translations.h"
 #include "agent.h"
 #include "ui_text.h"
 
 static String g_ip;
 static bool g_voice = true;
 static uint32_t g_lastFrame = 0;
-static FaceViewMode g_viewMode = FaceViewMode::Claude;
-static FaceViewMode g_lastManualMode = FaceViewMode::Claude;
+static const FacePanel* g_panel = nullptr;
 
 static M5Canvas g_canvas(&M5.Display);
 static bool g_canvasReady = false;
@@ -217,30 +216,8 @@ static void drawDecorations(AgentState state, uint32_t now, int shiftX) {
   }
 }
 
-static bool importantState(AgentState state) {
-  return state == AgentState::Attention || state == AgentState::Error ||
-         state == AgentState::Abort || state == AgentState::Done;
-}
-
-static AgentId displayedAgent() {
-  if (g_viewMode == FaceViewMode::Codex) return AgentId::Codex;
-  if (g_viewMode == FaceViewMode::Auto) return agentMostRecent();
-  return AgentId::Claude;
-}
-
-AgentId faceFocusedAgent() {
-  if (g_viewMode == FaceViewMode::Both) return agentMostRecent();
-  return displayedAgent();
-}
-
-static void drawBackgroundToast(AgentId shown, uint32_t now) {
-  if (g_viewMode == FaceViewMode::Both || g_viewMode == FaceViewMode::Auto) return;
-  AgentId other = shown == AgentId::Claude ? AgentId::Codex : AgentId::Claude;
-  if (!agentHasSeen(other)) return;
-  AgentState otherState = agentGetState(other);
-  if (!importantState(otherState)) return;
-  if (now - agentStateSince(other) > 4200) return;
-
+static void drawBackgroundToast(AgentId other) {
+  const AgentState otherState = agentGetState(other);
   const uint16_t a = accentForState(otherState);
   String line = String(agentName(other)) + ": " + stateTitle(otherState);
   if (otherState == AgentState::Done && agentLastTaskDurationMs(other)) {
@@ -269,11 +246,11 @@ static void renderAgentFace(AgentId agent, uint32_t now) {
   uiDrawText(g_canvas, UI_FONT_HEADER, agentName(agent), 20, 12,
              brandColor(agent), C_PANEL, 120);
 
-  const bool connected = g_ip.length() && g_ip != "NO WIFI";
-  g_canvas.fillCircle(300, 22, 4, connected ? C_GREEN : C_RED);
+  const bool autoMode = faceGetViewMode() == FaceViewMode::Auto;
+  g_canvas.fillCircle(300, 22, 4, g_ip.length() ? C_GREEN : C_RED);
 
   String topRight;
-  if (g_viewMode == FaceViewMode::Auto) topRight = "AUTO";
+  if (autoMode) topRight = "AUTO";
   if (agentTaskActive(agent)) {
     if (topRight.length()) topRight += "  ";
     topRight += taskClock(agentTaskElapsedMs(agent));
@@ -281,7 +258,7 @@ static void renderAgentFace(AgentId agent, uint32_t now) {
   if (topRight.length()) {
     const int w = uiTextWidth(UI_FONT_SMALL, topRight);
     uiDrawText(g_canvas, UI_FONT_SMALL, topRight, 288 - w, 16,
-               g_viewMode == FaceViewMode::Auto ? C_YELLOW : C_CYAN,
+               autoMode ? C_YELLOW : C_CYAN,
                C_PANEL, w);
   }
 
@@ -402,16 +379,13 @@ static void renderAgentFace(AgentId agent, uint32_t now) {
   }
 
   // Important event from the background agent temporarily replaces the footer.
-  AgentId other = agent == AgentId::Claude ? AgentId::Codex : AgentId::Claude;
-  const bool toast = g_viewMode != FaceViewMode::Auto && agentHasSeen(other) &&
-                     importantState(agentGetState(other)) &&
-                     now - agentStateSince(other) <= 4200;
-  if (toast) {
-    drawBackgroundToast(agent, now);
+  AgentId other;
+  if (faceBackgroundAlert(agent, now, 4200, &other)) {
+    drawBackgroundToast(other);
     return;
   }
 
-  if (g_ip.length() && g_ip != "NO WIFI") {
+  if (g_ip.length()) {
     uiDrawText(g_canvas, UI_FONT_SMALL, g_ip, 13, 220, C_MUTED, C_BG, 150);
   } else {
     uiDrawText(g_canvas, UI_FONT_SMALL, tr("NO NETWORK", "НЕТ СЕТИ"), 13, 220, C_RED, C_BG, 150);
@@ -431,14 +405,15 @@ static void renderAgentFace(AgentId agent, uint32_t now) {
              rightColor, C_BG, rightWidth);
 }
 
-static void renderAgentCard(AgentId agent, int y, uint32_t now) {
+static void renderAgentCard(AgentId agent, int y, int height) {
   const bool seen = agentHasSeen(agent);
   const AgentState state = agentGetState(agent);
   const uint16_t a = seen ? accentForState(state) : C_MUTED;
+  const int h = height - 10;
 
-  g_canvas.fillRoundRect(10, y, 300, 82, 13, C_PANEL);
-  g_canvas.drawRoundRect(10, y, 300, 82, 13, seen ? C_PANEL2 : C_MUTED);
-  g_canvas.fillRoundRect(10, y, 5, 82, 3, seen ? brandColor(agent) : C_MUTED);
+  g_canvas.fillRoundRect(10, y, 300, h, 13, C_PANEL);
+  g_canvas.drawRoundRect(10, y, 300, h, 13, seen ? C_PANEL2 : C_MUTED);
+  g_canvas.fillRoundRect(10, y, 5, h, 3, seen ? brandColor(agent) : C_MUTED);
 
   uiDrawText(g_canvas, UI_FONT_HEADER, agentName(agent), 23, y + 8,
              brandColor(agent), C_PANEL, 100);
@@ -447,8 +422,11 @@ static void renderAgentCard(AgentId agent, int y, uint32_t now) {
   const int sw = uiTextWidth(UI_FONT_SMALL, status);
   uiDrawText(g_canvas, UI_FONT_SMALL, status, 294 - sw, y + 13, a, C_PANEL, sw);
 
-  String detail = seen ? agentGetDetail(agent) : tr("Waiting for first hook", "Жду первый hook");
-  uiDrawText(g_canvas, UI_FONT_SMALL, detail, 23, y + 38, C_TEXT, C_PANEL, 270);
+  // Compact cards (three or more providers) drop the detail line.
+  if (h >= 70) {
+    String detail = seen ? agentGetDetail(agent) : tr("Waiting for first hook", "Жду первый hook");
+    uiDrawText(g_canvas, UI_FONT_SMALL, detail, 23, y + 38, C_TEXT, C_PANEL, 270);
+  }
 
   String stats;
   if (agentTaskActive(agent)) {
@@ -459,20 +437,22 @@ static void renderAgentCard(AgentId agent, int y, uint32_t now) {
   } else {
     stats = seen ? tr("ready", "готов к работе") : tr("not connected", "не подключён");
   }
-  uiDrawText(g_canvas, UI_FONT_SMALL, stats, 23, y + 59,
+  uiDrawText(g_canvas, UI_FONT_SMALL, stats, 23, y + h - 23,
              agentTaskActive(agent) ? C_CYAN : C_MUTED, C_PANEL, 270);
 }
 
-static void renderBoth(uint32_t now) {
+static void renderAll() {
   g_canvas.fillSprite(C_BG);
   uiDrawText(g_canvas, UI_FONT_HEADER, tr("AGENTS", "АГЕНТЫ"), 14, 8, C_WHITE, C_BG, 130);
-  const bool connected = g_ip.length() && g_ip != "NO WIFI";
-  g_canvas.fillCircle(303, 18, 4, connected ? C_GREEN : C_RED);
+  g_canvas.fillCircle(303, 18, 4, g_ip.length() ? C_GREEN : C_RED);
 
-  renderAgentCard(AgentId::Claude, 35, now);
-  renderAgentCard(AgentId::Codex, 127, now);
+  AgentId agents[AGENT_COUNT];
+  const uint8_t n = faceVisibleAgents(agents);
+  const int cardHeight = min(92, 177 / max(1, (int)n));
+  for (uint8_t i = 0; i < n; ++i) renderAgentCard(agents[i], 35 + i * cardHeight, cardHeight);
 
-  String footer = g_voice ? tr("A: sound   C: view", "A: звук   C: режим") : tr("A: muted   C: view", "A: без звука   C: режим");
+  String footer = g_voice ? tr("A: sound  C: view  hold A: menu", "A: звук  C: вид  удерж. A: меню")
+                          : tr("A: muted  C: view  hold A: menu", "A: тихо  C: вид  удерж. A: меню");
   uiDrawTextCentered(g_canvas, UI_FONT_SMALL, footer, 160, 218, C_MUTED, C_BG, 300);
 }
 
@@ -490,6 +470,47 @@ void faceBegin() {
   }
 }
 
+static void renderPanel(const FacePanel& p) {
+  g_canvas.fillSprite(C_BG);
+  uiDrawText(g_canvas, UI_FONT_HEADER, p.title, 14, 8, C_WHITE, C_BG, 292);
+  g_canvas.drawFastHLine(10, 34, 300, C_PANEL2);
+
+  constexpr int rowH = 20;
+  constexpr int top = 40;
+  const int bottom = p.progress >= 0 ? 168 : (p.footer.length() ? 212 : 236);
+  const int visible = max(1, (bottom - top) / rowH);
+  int first = 0;
+  if (p.selected >= visible) first = p.selected - visible + 1;
+
+  for (int i = first; i < p.count && i - first < visible; ++i) {
+    const int y = top + (i - first) * rowH;
+    const bool sel = i == p.selected;
+    const uint16_t bg = sel ? C_PANEL2 : C_BG;
+    if (sel) {
+      g_canvas.fillRoundRect(8, y - 1, 304, rowH, 6, C_PANEL2);
+      g_canvas.fillRoundRect(8, y - 1, 4, rowH, 2, C_CYAN);
+    }
+    const FacePanelLine& line = p.lines[i];
+    const int vw = min(uiTextWidth(UI_FONT_SMALL, line.value), 200);
+    uiDrawText(g_canvas, UI_FONT_SMALL, line.label, 18, y + 1, sel ? C_WHITE : C_TEXT, bg,
+               line.value.length() ? 278 - vw : 286);
+    if (line.value.length()) {
+      uiDrawText(g_canvas, UI_FONT_SMALL, line.value, 304 - vw, y + 1, sel ? C_CYAN : C_MUTED, bg, vw);
+    }
+  }
+  if (first > 0) g_canvas.fillTriangle(308, 36, 304, 40, 312, 40, C_MUTED);
+  if (first + visible < p.count) g_canvas.fillTriangle(308, bottom + 2, 304, bottom - 2, 312, bottom - 2, C_MUTED);
+
+  if (p.progress >= 0) {
+    const int pct = min((int)p.progress, 100);
+    g_canvas.drawRoundRect(20, 176, 280, 22, 8, C_PANEL2);
+    if (pct > 0) g_canvas.fillRoundRect(23, 179, max(8, (274 * pct) / 100), 16, 6, C_CYAN);
+  }
+  if (p.footer.length()) {
+    uiDrawTextCentered(g_canvas, UI_FONT_SMALL, p.footer, 160, 218, C_MUTED, C_BG, 300);
+  }
+}
+
 void faceSetNetwork(const String& ip) {
   g_ip = ip;
   g_lastFrame = 0;
@@ -500,68 +521,29 @@ void faceSetVoiceEnabled(bool enabled) {
   g_lastFrame = 0;
 }
 
-void faceCycleViewMode() {
-  if (g_viewMode == FaceViewMode::Auto) {
-    g_viewMode = g_lastManualMode;
-  } else if (g_viewMode == FaceViewMode::Claude) {
-    g_viewMode = FaceViewMode::Codex;
-    g_lastManualMode = g_viewMode;
-  } else if (g_viewMode == FaceViewMode::Codex) {
-    g_viewMode = FaceViewMode::Both;
-    g_lastManualMode = g_viewMode;
-  } else {
-    g_viewMode = FaceViewMode::Claude;
-    g_lastManualMode = g_viewMode;
-  }
-  g_lastFrame = 0;
+void faceSetBrightness(uint8_t percent) {
+  M5.Display.setBrightness((uint8_t)((constrain((int)percent, 1, 100) * 255) / 100));
 }
 
-void faceToggleAutoMode() {
-  if (g_viewMode == FaceViewMode::Auto) {
-    g_viewMode = g_lastManualMode;
-  } else {
-    g_lastManualMode = g_viewMode;
-    g_viewMode = FaceViewMode::Auto;
-  }
-  g_lastFrame = 0;
+void faceShowPanel(const FacePanel* panel) {
+  if (panel != g_panel) g_lastFrame = 0;
+  g_panel = panel;
 }
 
-FaceViewMode faceGetViewMode() { return g_viewMode; }
-
-const char* faceViewModeName() {
-  switch (g_viewMode) {
-    case FaceViewMode::Claude: return "claude";
-    case FaceViewMode::Codex: return "codex";
-    case FaceViewMode::Both: return "both";
-    case FaceViewMode::Auto: return "auto";
-  }
-  return "claude";
-}
-
-bool faceSetViewModeByName(const String& modeRaw) {
-  String mode(modeRaw);
-  mode.toLowerCase();
-  if (mode == "claude") g_viewMode = FaceViewMode::Claude;
-  else if (mode == "codex") g_viewMode = FaceViewMode::Codex;
-  else if (mode == "both" || mode == "all") g_viewMode = FaceViewMode::Both;
-  else if (mode == "auto") g_viewMode = FaceViewMode::Auto;
-  else return false;
-
-  if (g_viewMode != FaceViewMode::Auto) g_lastManualMode = g_viewMode;
-  g_lastFrame = 0;
-  return true;
+void faceRenderNow() {
+  if (!g_canvasReady) return;
+  const uint32_t now = millis();
+  g_lastFrame = now;
+  if (g_panel) renderPanel(*g_panel);
+  else if (faceViewShowsAll()) renderAll();
+  else renderAgentFace(faceDisplayedAgent(), now);
+  g_canvas.pushSprite(0, 0);
 }
 
 void faceLoop() {
   if (!g_canvasReady) return;
-  const uint32_t now = millis();
-  if (g_lastFrame != 0 && now - g_lastFrame < 66) return;
-  g_lastFrame = now;
-
-  if (g_viewMode == FaceViewMode::Both) renderBoth(now);
-  else renderAgentFace(displayedAgent(), now);
-
-  g_canvas.pushSprite(0, 0);
+  if (g_lastFrame != 0 && millis() - g_lastFrame < 66) return;
+  faceRenderNow();
 }
 
 #endif // PROFILE_M5STACK_BASIC

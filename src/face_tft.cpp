@@ -8,7 +8,7 @@
 #include "face.h"
 #include "agent.h"
 #include "config.h"
-#include "locale.h"
+#include "translations.h"
 #include "ui_font_data.h"
 
 #ifndef TFT_ROTATION
@@ -24,8 +24,7 @@
 static TFT_eSPI g_tft;
 static TFT_eSprite g_sprite(&g_tft);
 static bool g_spriteReady = false;
-static FaceViewMode g_viewMode = FaceViewMode::Claude;
-static FaceViewMode g_lastManualMode = FaceViewMode::Claude;
+static const FacePanel* g_panel = nullptr;
 static String g_ip;
 static bool g_voice = true;
 static uint32_t g_lastFrame = 0;
@@ -108,8 +107,7 @@ static uint16_t accent(AgentState s) {
   switch(s){case AgentState::Attention:return C_YELLOW;case AgentState::Done:return C_GREEN;case AgentState::Error:case AgentState::Abort:return C_RED;case AgentState::Reading:return C_CYAN;case AgentState::Running:return C_PURPLE;default:return C_TEXT;}
 }
 
-static AgentId displayedAgent(){if(g_viewMode==FaceViewMode::Codex)return AgentId::Codex;if(g_viewMode==FaceViewMode::Auto)return agentMostRecent();return AgentId::Claude;}
-AgentId faceFocusedAgent(){return g_viewMode==FaceViewMode::Both?agentMostRecent():displayedAgent();}
+static uint16_t brand(AgentId a){return a==AgentId::Codex?C_GREEN:C_CYAN;}
 
 static void drawFace(AgentState s, uint32_t now, int top, int bottom) {
   int w=g_sprite.width(); int h=bottom-top; int cy=top+h/2-5;
@@ -149,53 +147,92 @@ static void drawFace(AgentState s, uint32_t now, int top, int bottom) {
   else g_sprite.drawLine(w/2-12,my,w/2+12,my,C_TEXT);
 }
 
-static bool important(AgentState s){return s==AgentState::Attention||s==AgentState::Error||s==AgentState::Abort||s==AgentState::Done;}
-
 static void renderAgent(AgentId agent,uint32_t now){
   int w=g_sprite.width(),h=g_sprite.height(); AgentState s=agentGetState(agent); uint16_t a=accent(s);
+  const bool autoMode=faceGetViewMode()==FaceViewMode::Auto;
   g_sprite.fillSprite(C_BG);g_sprite.fillRoundRect(4,4,w-8,h-8,10,C_PANEL);g_sprite.drawRoundRect(4,4,w-8,h-8,10,C_PANEL2);
-  drawText(UI_FONT_HEADER,agentName(agent),12,9,agent==AgentId::Claude?C_CYAN:C_GREEN,C_PANEL,w/2);
-  String rt; if(g_viewMode==FaceViewMode::Auto)rt="AUTO"; if(agentTaskActive(agent)){if(rt.length())rt+=" ";rt+=taskClock(agentTaskElapsedMs(agent));}
-  if(rt.length())drawText(UI_FONT_SMALL,rt,w-12-textWidth(UI_FONT_SMALL,rt),12,g_viewMode==FaceViewMode::Auto?C_YELLOW:C_CYAN,C_PANEL,w/2);
+  drawText(UI_FONT_HEADER,agentName(agent),12,9,brand(agent),C_PANEL,w/2);
+  String rt; if(autoMode)rt="AUTO"; if(agentTaskActive(agent)){if(rt.length())rt+=" ";rt+=taskClock(agentTaskElapsedMs(agent));}
+  if(rt.length())drawText(UI_FONT_SMALL,rt,w-12-textWidth(UI_FONT_SMALL,rt),12,autoMode?C_YELLOW:C_CYAN,C_PANEL,w/2);
   int faceTop=30,faceBottom=max(75,h-54);drawFace(s,now,faceTop,faceBottom);
   centered(UI_FONT_BIG,stateTitle(s),w/2,h-47,a,C_BG,w-14);
   String d=agentGetDetail(agent);centered(UI_FONT_SMALL,d,w/2,h-24,C_TEXT,C_BG,w-14);
-  AgentId other=agent==AgentId::Claude?AgentId::Codex:AgentId::Claude;
-  if(g_viewMode!=FaceViewMode::Auto&&agentHasSeen(other)&&important(agentGetState(other))&&now-agentStateSince(other)<4500){
+  AgentId other;
+  if(faceBackgroundAlert(agent,now,4500,&other)){
     g_sprite.fillCircle(w-11,h-11,7,accent(agentGetState(other)));
     drawText(UI_FONT_SMALL,"!",w-14,h-17,C_BG,accent(agentGetState(other)),10);
   }
 }
 
-static void renderCard(AgentId a,int y,int height,uint32_t now){
+static void renderCard(AgentId a,int y,int height){
   int w=g_sprite.width(); AgentState s=agentGetState(a);g_sprite.fillRoundRect(7,y,w-14,height-3,8,C_PANEL);g_sprite.drawRoundRect(7,y,w-14,height-3,8,accent(s));
-  drawText(UI_FONT_HEADER,agentName(a),14,y+7,a==AgentId::Claude?C_CYAN:C_GREEN,C_PANEL,w/2);
+  drawText(UI_FONT_HEADER,agentName(a),14,y+7,brand(a),C_PANEL,w/2);
   String st=agentHasSeen(a)?String(stateTitle(s)):String("-");drawText(UI_FONT_SMALL,st,w-14-textWidth(UI_FONT_SMALL,st),y+10,accent(s),C_PANEL,w/2);
+  if(height<44)return; // compact rows when many providers are enabled
   String info;if(agentTaskActive(a))info=taskClock(agentTaskElapsedMs(a))+" / "+String(agentToolCount(a));else if(agentLastTaskDurationMs(a))info=taskClock(agentLastTaskDurationMs(a))+" / "+String(agentLastToolCount(a));else info=agentHasSeen(a)?tr("ready","готов"):tr("no data","нет данных");
   drawText(UI_FONT_SMALL,info,14,y+height-18,C_MUTED,C_PANEL,w-28);
-  (void)now;
 }
 
-static void renderBoth(uint32_t now){
+static void renderAll(){
   int w=g_sprite.width(),h=g_sprite.height();g_sprite.fillSprite(C_BG);centered(UI_FONT_HEADER,tr("AGENTS","АГЕНТЫ"),w/2,7,C_TEXT,C_BG,w-12);
-  int top=28;int ch=(h-top-8)/2;renderCard(AgentId::Claude,top,ch,now);renderCard(AgentId::Codex,top+ch,ch,now);
+  AgentId agents[AGENT_COUNT]; const uint8_t n=faceVisibleAgents(agents);
+  int top=28;int ch=(h-top-8)/max(1,(int)n);
+  for(uint8_t i=0;i<n;++i)renderCard(agents[i],top+i*ch,ch);
 }
+
+static void renderPanel(const FacePanel& p){
+  int w=g_sprite.width(),h=g_sprite.height();
+  g_sprite.fillSprite(C_BG);
+  drawText(UI_FONT_HEADER,p.title,8,4,C_TEXT,C_BG,w-16);
+  g_sprite.drawFastHLine(4,28,w-8,C_PANEL2);
+  const int rowH=18, top=32;
+  const int bottom=p.progress>=0?h-30:(p.footer.length()?h-20:h-2);
+  const int visible=max(1,(bottom-top)/rowH);
+  int first=0; if(p.selected>=visible)first=p.selected-visible+1;
+  for(int i=first;i<p.count&&i-first<visible;++i){
+    const int y=top+(i-first)*rowH; const bool sel=i==p.selected; const uint16_t bg=sel?C_PANEL2:C_BG;
+    if(sel)g_sprite.fillRoundRect(3,y-1,w-6,rowH,4,C_PANEL2);
+    const FacePanelLine& line=p.lines[i];
+    const int vw=min(textWidth(UI_FONT_SMALL,line.value),w*2/3);
+    drawText(UI_FONT_SMALL,line.label,8,y+1,sel?C_TEXT:C_MUTED,bg,line.value.length()?w-24-vw:w-16);
+    if(line.value.length())drawText(UI_FONT_SMALL,line.value,w-8-vw,y+1,sel?C_CYAN:C_TEXT,bg,vw);
+  }
+  if(p.progress>=0){
+    g_sprite.drawRoundRect(8,h-26,w-16,16,5,C_PANEL2);
+    const int pct=min((int)p.progress,100); if(pct>0)g_sprite.fillRoundRect(10,h-24,max(6,((w-20)*pct)/100),12,4,C_CYAN);
+  }
+  if(p.footer.length())centered(UI_FONT_SMALL,p.footer,w/2,h-18,C_MUTED,C_BG,w-8);
+}
+
+static constexpr uint8_t kBacklightChannel=7;
 
 void faceBegin(){
-#if TFT_BL >= 0
-  pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,TFT_BACKLIGHT_ON);
-#endif
   g_tft.init();g_tft.setRotation(TFT_ROTATION);g_tft.fillScreen(C_BG);
+#if TFT_BL >= 0
+  // PWM backlight so the brightness setting works; TFT_eSPI only switches it on.
+  ledcSetup(kBacklightChannel,5000,8); ledcAttachPin(TFT_BL,kBacklightChannel);
+  ledcWrite(kBacklightChannel,TFT_BACKLIGHT_ON==HIGH?255:0);
+#endif
   g_sprite.setColorDepth(8);g_spriteReady=g_sprite.createSprite(g_tft.width(),g_tft.height())!=nullptr;
   if(g_spriteReady){g_sprite.fillSprite(C_BG);centered(UI_FONT_HEADER,"AgentFace32",g_tft.width()/2,g_tft.height()/2-15,C_CYAN,C_BG,g_tft.width()-12);centered(UI_FONT_SMALL,HARDWARE_PROFILE_NAME,g_tft.width()/2,g_tft.height()/2+10,C_MUTED,C_BG,g_tft.width()-12);g_sprite.pushSprite(0,0);}
 }
 void faceSetNetwork(const String& ip){g_ip=ip;(void)g_ip;g_lastFrame=0;}
 void faceSetVoiceEnabled(bool e){g_voice=e;(void)g_voice;g_lastFrame=0;}
-void faceCycleViewMode(){if(g_viewMode==FaceViewMode::Auto)g_viewMode=g_lastManualMode;else if(g_viewMode==FaceViewMode::Claude)g_viewMode=g_lastManualMode=FaceViewMode::Codex;else if(g_viewMode==FaceViewMode::Codex)g_viewMode=g_lastManualMode=FaceViewMode::Both;else g_viewMode=g_lastManualMode=FaceViewMode::Claude;g_lastFrame=0;}
-void faceToggleAutoMode(){if(g_viewMode==FaceViewMode::Auto)g_viewMode=g_lastManualMode;else{g_lastManualMode=g_viewMode;g_viewMode=FaceViewMode::Auto;}g_lastFrame=0;}
-FaceViewMode faceGetViewMode(){return g_viewMode;}
-const char* faceViewModeName(){switch(g_viewMode){case FaceViewMode::Claude:return"claude";case FaceViewMode::Codex:return"codex";case FaceViewMode::Both:return"both";case FaceViewMode::Auto:return"auto";}return"claude";}
-bool faceSetViewModeByName(const String& raw){String m(raw);m.toLowerCase();if(m=="claude")g_viewMode=FaceViewMode::Claude;else if(m=="codex")g_viewMode=FaceViewMode::Codex;else if(m=="both"||m=="all")g_viewMode=FaceViewMode::Both;else if(m=="auto")g_viewMode=FaceViewMode::Auto;else return false;if(g_viewMode!=FaceViewMode::Auto)g_lastManualMode=g_viewMode;g_lastFrame=0;return true;}
-void faceLoop(){if(!g_spriteReady)return;uint32_t now=millis();if(g_lastFrame&&now-g_lastFrame<66)return;g_lastFrame=now;if(g_viewMode==FaceViewMode::Both)renderBoth(now);else renderAgent(displayedAgent(),now);g_sprite.pushSprite(0,0);}
+void faceSetBrightness(uint8_t percent){
+#if TFT_BL >= 0
+  uint32_t duty=(constrain((int)percent,1,100)*255)/100;
+  ledcWrite(kBacklightChannel,TFT_BACKLIGHT_ON==HIGH?duty:255-duty);
+#else
+  (void)percent;
+#endif
+}
+void faceShowPanel(const FacePanel* panel){if(panel!=g_panel)g_lastFrame=0;g_panel=panel;}
+void faceRenderNow(){
+  if(!g_spriteReady)return;
+  uint32_t now=millis(); g_lastFrame=now;
+  if(g_panel)renderPanel(*g_panel); else if(faceViewShowsAll())renderAll(); else renderAgent(faceDisplayedAgent(),now);
+  g_sprite.pushSprite(0,0);
+}
+void faceLoop(){if(!g_spriteReady)return;if(g_lastFrame&&millis()-g_lastFrame<66)return;faceRenderNow();}
 
 #endif // DISPLAY_BACKEND_TFT_ESPI

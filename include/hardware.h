@@ -3,9 +3,8 @@
 
 void hardwareBegin();
 void hardwareUpdate();
-void hardwareSetDisplayBrightness(uint8_t value);
-
 bool hardwareButtonAClicked();
+bool hardwareButtonAHeld();
 bool hardwareButtonBClicked();
 bool hardwareButtonCClicked();
 bool hardwareButtonCHeld();

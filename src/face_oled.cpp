@@ -8,7 +8,7 @@
 #include "face.h"
 #include "agent.h"
 #include "config.h"
-#include "locale.h"
+#include "translations.h"
 
 #if defined(DISPLAY_DRIVER_SH1106)
 static U8G2_SH1106_128X64_NONAME_F_HW_I2C g_oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL_PIN, OLED_SDA_PIN);
@@ -16,11 +16,10 @@ static U8G2_SH1106_128X64_NONAME_F_HW_I2C g_oled(U8G2_R0, U8X8_PIN_NONE, OLED_SC
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C g_oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL_PIN, OLED_SDA_PIN);
 #endif
 
-static FaceViewMode g_viewMode = FaceViewMode::Claude;
-static FaceViewMode g_lastManualMode = FaceViewMode::Claude;
 static String g_ip;
 static bool g_voice = true;
 static uint32_t g_lastFrame = 0;
+static const FacePanel* g_panel = nullptr;
 
 static String taskClock(uint32_t ms) {
   uint32_t total = ms / 1000;
@@ -33,17 +32,6 @@ static String taskClock(uint32_t ms) {
              (unsigned long)(total % 60));
   }
   return String(buf);
-}
-
-static AgentId displayedAgent() {
-  if (g_viewMode == FaceViewMode::Codex) return AgentId::Codex;
-  if (g_viewMode == FaceViewMode::Auto) return agentMostRecent();
-  return AgentId::Claude;
-}
-
-AgentId faceFocusedAgent() {
-  if (g_viewMode == FaceViewMode::Both) return agentMostRecent();
-  return displayedAgent();
 }
 
 static void centered(const String& text, int y) {
@@ -129,10 +117,6 @@ static void drawMouth(AgentState state, uint32_t now) {
   }
 }
 
-static bool importantState(AgentState s) {
-  return s == AgentState::Attention || s == AgentState::Error || s == AgentState::Abort || s == AgentState::Done;
-}
-
 static void renderAgent(AgentId agent, uint32_t now) {
   const AgentState state = agentGetState(agent);
   g_oled.setFont(u8g2_font_6x12_t_cyrillic);
@@ -140,7 +124,7 @@ static void renderAgent(AgentId agent, uint32_t now) {
   if (agentTaskActive(agent)) {
     String t = taskClock(agentTaskElapsedMs(agent));
     g_oled.drawUTF8(127 - g_oled.getUTF8Width(t.c_str()), 10, t.c_str());
-  } else if (g_viewMode == FaceViewMode::Auto) {
+  } else if (faceGetViewMode() == FaceViewMode::Auto) {
     g_oled.drawStr(102, 10, "AUTO");
   }
 
@@ -154,9 +138,8 @@ static void renderAgent(AgentId agent, uint32_t now) {
   if (detail.length()) centered(detail, 62);
 
   // If the hidden agent needs attention, invert a small corner marker.
-  AgentId other = agent == AgentId::Claude ? AgentId::Codex : AgentId::Claude;
-  if (g_viewMode != FaceViewMode::Auto && agentHasSeen(other) && importantState(agentGetState(other)) &&
-      now - agentStateSince(other) < 4500) {
+  AgentId other;
+  if (faceBackgroundAlert(agent, now, 4500, &other)) {
     g_oled.drawBox(112, 13, 15, 10);
     g_oled.setDrawColor(0);
     g_oled.drawStr(115, 22, "!");
@@ -164,13 +147,21 @@ static void renderAgent(AgentId agent, uint32_t now) {
   }
 }
 
-static void card(AgentId agent, int top, uint32_t now) {
-  g_oled.drawRFrame(0, top, 128, 27, 3);
+static void card(AgentId agent, int top, int height) {
   g_oled.setFont(u8g2_font_6x12_t_cyrillic);
   String name = agentName(agent);
   String state = agentHasSeen(agent) ? String(stateTitle(agentGetState(agent))) : String("-");
-  g_oled.drawUTF8(4, top + 10, name.c_str());
   int sw = g_oled.getUTF8Width(state.c_str());
+
+  if (height < 20) {
+    // Three or more providers: one line per provider.
+    g_oled.drawUTF8(2, top + 10, name.c_str());
+    g_oled.drawUTF8(max(50, 126 - sw), top + 10, state.c_str());
+    return;
+  }
+
+  g_oled.drawRFrame(0, top, 128, height - 1, 3);
+  g_oled.drawUTF8(4, top + 10, name.c_str());
   g_oled.drawUTF8(max(50, 124 - sw), top + 10, state.c_str());
 
   String info;
@@ -185,11 +176,47 @@ static void card(AgentId agent, int top, uint32_t now) {
   g_oled.drawUTF8(4, top + 23, info.c_str());
 }
 
-static void renderBoth(uint32_t now) {
+static void renderAll() {
   g_oled.setFont(u8g2_font_6x12_t_cyrillic);
   centered(tr("AGENTS", "АГЕНТЫ"), 10);
-  card(AgentId::Claude, 12, now);
-  card(AgentId::Codex, 40, now);
+  AgentId agents[AGENT_COUNT];
+  const uint8_t n = faceVisibleAgents(agents);
+  const int height = 52 / max(1, (int)n);
+  for (uint8_t i = 0; i < n; ++i) card(agents[i], 12 + i * height, height);
+}
+
+static void renderPanel(const FacePanel& p) {
+  // 5x8 font fits ~25 characters per row, enough for "Wi-Fi AgentFace32-AB12".
+  g_oled.setFont(u8g2_font_5x8_t_cyrillic);
+  g_oled.drawUTF8(0, 7, fitText(p.title, 128).c_str());
+  g_oled.drawHLine(0, 9, 128);
+
+  constexpr int rowH = 9;
+  constexpr int top = 11;
+  const int bottom = p.progress >= 0 ? 52 : 64;
+  const int visible = max(1, (bottom - top) / rowH);
+  int first = 0;
+  if (p.selected >= visible) first = p.selected - visible + 1;
+
+  for (int i = first; i < p.count && i - first < visible; ++i) {
+    const int y = top + (i - first) * rowH;
+    const bool sel = i == p.selected;
+    if (sel) {
+      g_oled.drawBox(0, y, 128, rowH);
+      g_oled.setDrawColor(0);
+    }
+    String value = fitText(p.lines[i].value, 122);
+    const int vw = g_oled.getUTF8Width(value.c_str());
+    const int labelSpace = 124 - vw - (vw ? 4 : 0);
+    if (labelSpace >= 15) g_oled.drawUTF8(2, y + 7, fitText(p.lines[i].label, labelSpace).c_str());
+    if (vw) g_oled.drawUTF8(126 - vw, y + 7, value.c_str());
+    g_oled.setDrawColor(1);
+  }
+
+  if (p.progress >= 0) {
+    g_oled.drawFrame(0, 54, 128, 9);
+    g_oled.drawBox(2, 56, (124 * min((int)p.progress, 100)) / 100, 5);
+  }
 }
 
 void faceBegin() {
@@ -208,51 +235,29 @@ void faceBegin() {
 void faceSetNetwork(const String& ip) { g_ip = ip; (void)g_ip; }
 void faceSetVoiceEnabled(bool enabled) { g_voice = enabled; (void)g_voice; }
 
-void faceCycleViewMode() {
-  if (g_viewMode == FaceViewMode::Auto) g_viewMode = g_lastManualMode;
-  else if (g_viewMode == FaceViewMode::Claude) g_viewMode = g_lastManualMode = FaceViewMode::Codex;
-  else if (g_viewMode == FaceViewMode::Codex) g_viewMode = g_lastManualMode = FaceViewMode::Both;
-  else g_viewMode = g_lastManualMode = FaceViewMode::Claude;
-  g_lastFrame = 0;
+// OLED panels have no backlight; contrast is the closest equivalent.
+void faceSetBrightness(uint8_t percent) {
+  g_oled.setContrast((uint8_t)((constrain((int)percent, 1, 100) * 255) / 100));
 }
 
-void faceToggleAutoMode() {
-  if (g_viewMode == FaceViewMode::Auto) g_viewMode = g_lastManualMode;
-  else { g_lastManualMode = g_viewMode; g_viewMode = FaceViewMode::Auto; }
-  g_lastFrame = 0;
+void faceShowPanel(const FacePanel* panel) {
+  if (panel != g_panel) g_lastFrame = 0;
+  g_panel = panel;
 }
 
-FaceViewMode faceGetViewMode() { return g_viewMode; }
-const char* faceViewModeName() {
-  switch (g_viewMode) {
-    case FaceViewMode::Claude: return "claude";
-    case FaceViewMode::Codex: return "codex";
-    case FaceViewMode::Both: return "both";
-    case FaceViewMode::Auto: return "auto";
-  }
-  return "claude";
-}
-
-bool faceSetViewModeByName(const String& raw) {
-  String mode(raw); mode.toLowerCase();
-  if (mode == "claude") g_viewMode = FaceViewMode::Claude;
-  else if (mode == "codex") g_viewMode = FaceViewMode::Codex;
-  else if (mode == "both" || mode == "all") g_viewMode = FaceViewMode::Both;
-  else if (mode == "auto") g_viewMode = FaceViewMode::Auto;
-  else return false;
-  if (g_viewMode != FaceViewMode::Auto) g_lastManualMode = g_viewMode;
-  g_lastFrame = 0;
-  return true;
+void faceRenderNow() {
+  const uint32_t now = millis();
+  g_lastFrame = now;
+  g_oled.clearBuffer();
+  if (g_panel) renderPanel(*g_panel);
+  else if (faceViewShowsAll()) renderAll();
+  else renderAgent(faceDisplayedAgent(), now);
+  g_oled.sendBuffer();
 }
 
 void faceLoop() {
-  uint32_t now = millis();
-  if (g_lastFrame && now - g_lastFrame < 100) return; // 10 FPS is enough on I2C OLED.
-  g_lastFrame = now;
-  g_oled.clearBuffer();
-  if (g_viewMode == FaceViewMode::Both) renderBoth(now);
-  else renderAgent(displayedAgent(), now);
-  g_oled.sendBuffer();
+  if (g_lastFrame && millis() - g_lastFrame < 100) return; // 10 FPS is enough on I2C OLED.
+  faceRenderNow();
 }
 
 #endif // DISPLAY_BACKEND_U8G2

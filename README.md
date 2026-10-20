@@ -39,7 +39,12 @@ AgentFace32 gives that background activity a physical presence. A glance at the 
 - **Useful details:** file paths, grep/search patterns, URLs, shell commands, task duration and number of tool calls.
 - **Background alerts:** if the hidden agent needs attention or finishes, the active screen can show it without losing the other agent's state.
 - **Smarter Codex permissions:** `PermissionRequest` waits 10 seconds before alerting. Auto-approved actions normally continue before that, preventing noisy false alarms.
-- **English and Russian UI.** Set one line in `config.local.h`.
+- **No-config Wi-Fi setup.** On first boot the device opens its own access point with a captive portal; pick your network in the browser and it reboots onto it.
+- **Settings menu** on the device (hold **A**) and in the browser (`http://DEVICE_IP/`): providers, brightness, sound, language, Wi-Fi.
+- **Choose providers.** Show only Claude, only Codex, or both; the provider registry is ready for more.
+- **Wi-Fi firmware updates** with automatic rollback if the new image crashes: `pio run -e m5stack-basic -t ota`.
+- **Logs and crash dumps over Wi-Fi.** A log ring buffer survives crashes and restarts; core dumps can be decoded from your PC.
+- **English and Russian UI**, switchable at runtime.
 - **Optional sound:** M5Stack Basic speech/tone cues, passive piezo tones, or a MAX98357A I²S amp profile.
 - **Local REST API:** use AgentFace32 from another agent, editor, script or CI system with a single HTTP POST.
 - **Multiple hardware profiles** from one PlatformIO project.
@@ -66,31 +71,7 @@ See [Hardware & wiring](docs/HARDWARE.md).
 
 Use either the [PlatformIO IDE extension](https://platformio.org/install/ide?install=vscode) for VS Code or PlatformIO Core.
 
-### 2. Create your local config
-
-Copy the example file:
-
-```bash
-cp include/config.example.h include/config.local.h
-```
-
-On Windows PowerShell:
-
-```powershell
-Copy-Item include/config.example.h include/config.local.h
-```
-
-Edit at least:
-
-```cpp
-#define WIFI_SSID "MyWiFi"
-#define WIFI_PASSWORD "change-me"
-#define UI_LANGUAGE "en"   // or "ru"
-```
-
-`config.local.h` is gitignored, so Wi-Fi credentials stay out of the repository.
-
-### 3. Choose a hardware profile and flash
+### 2. Choose a hardware profile and flash (first time over USB)
 
 M5Stack Basic:
 
@@ -106,11 +87,25 @@ pio run -e esp32dev-ssd1306 -t upload
 
 Or select the matching environment in PlatformIO and press **Upload**.
 
-When the device joins Wi-Fi, check Serial Monitor or the display for its IP address. Then verify:
+> Upgrading an M5Stack from v0.6 or older: the partition table changed to make room for OTA, so flash once over USB.
+
+### 3. Connect it to Wi-Fi
+
+On first boot the screen shows **Wi-Fi setup**:
+
+1. Join the Wi-Fi network `AgentFace32-XXXX` (password `agentface`).
+2. The setup page opens by itself; if not, browse to `http://192.168.4.1`.
+3. Pick your network, enter the password, press **Save and restart**.
+
+The device reboots, joins your network and shows its IP. Verify:
 
 ```bash
 curl http://DEVICE_IP/health
 ```
+
+If the saved network is unreachable for ~45 s, the setup access point comes back on its own. You can also start it from the device menu (**hold A → Wi-Fi setup**) or the web page.
+
+Optional: credentials in `include/config.local.h` (copied from `config.example.h`, gitignored) are used as defaults until the web UI saves others.
 
 ### 4. Connect your agents
 
@@ -139,10 +134,21 @@ On M5Stack Basic:
 
 - **A** — sound on/off
 - **B** — cycle demo expressions
-- **C** — Claude → Codex → Both
+- **C** — next enabled provider → Both
 - **hold C** — toggle AUTO
+- **hold A** — settings menu (inside: **A** next, **B/C** select)
 
-Generic profiles can use the same controls with optional active-low external buttons, or switch views through `POST /view`.
+Generic profiles can use the same controls with optional active-low external buttons, or use the web page at `http://DEVICE_IP/` and `POST /view`.
+
+## Updating, logs and crash analysis over Wi-Fi
+
+```bash
+pio run -e m5stack-basic -t ota --upload-port DEVICE_IP     # build + flash over Wi-Fi
+python tools/agentface.py logs -f                           # follow the device log
+python tools/agentface.py crash --env m5stack-basic         # decode the last crash
+```
+
+`tools/agentface.py` reads the address from `--host` or `AGENTFACE_HOST` (default `agentface32.local`). Firmware can also be uploaded from the web page. See [API](docs/API.md#firmware-update-post-update).
 
 ## How it works
 

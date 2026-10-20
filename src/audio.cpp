@@ -3,7 +3,8 @@
 #include "audio.h"
 #include "config.h"
 #include "hardware_profile.h"
-#include "locale.h"
+#include "translations.h"
+#include "logger.h"
 
 static bool g_enabled = VOICE_ENABLED_BY_DEFAULT;
 
@@ -23,7 +24,7 @@ static uint8_t safeVolume() {
 static bool speakerWake() {
   if (g_speakerAwake) return true;
   if (!M5.Speaker.begin()) {
-    Serial.println("[audio] Speaker.begin failed");
+    logWarn("audio", "Speaker.begin failed");
     return false;
   }
   M5.Speaker.setVolume(safeVolume());
@@ -117,7 +118,7 @@ void audioButtonClick() {
 static void play(const uint8_t* data, size_t len) {
   if (!g_enabled || !speakerWake()) return;
   if (!M5.Speaker.playWav(data, len, 1, -1, true)) {
-    Serial.println("[audio] playWav rejected");
+    logWarn("audio", "playWav rejected");
   }
   requestSpeakerSleep();
 }

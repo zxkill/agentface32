@@ -13,8 +13,9 @@ void hardwareBegin() {
   M5.begin(cfg);
 }
 void hardwareUpdate() { M5.update(); }
-void hardwareSetDisplayBrightness(uint8_t value) { M5.Display.setBrightness(value); }
+
 bool hardwareButtonAClicked() { return M5.BtnA.wasClicked(); }
+bool hardwareButtonAHeld() { return M5.BtnA.wasHold(); }
 bool hardwareButtonBClicked() { return M5.BtnB.wasClicked(); }
 bool hardwareButtonCClicked() { return M5.BtnC.wasClicked(); }
 bool hardwareButtonCHeld() { return M5.BtnC.wasHold(); }
@@ -78,10 +79,8 @@ void hardwareUpdate() {
   updateButton(g_b);
   updateButton(g_c);
 }
-void hardwareSetDisplayBrightness(uint8_t value) {
-  (void)value; // Backlight is handled by the TFT renderer; OLED has no PWM backlight.
-}
 bool hardwareButtonAClicked() { const bool v = g_a.click; g_a.click = false; return v; }
+bool hardwareButtonAHeld() { const bool v = g_a.hold; g_a.hold = false; return v; }
 bool hardwareButtonBClicked() { const bool v = g_b.click; g_b.click = false; return v; }
 bool hardwareButtonCClicked() { const bool v = g_c.click; g_c.click = false; return v; }
 bool hardwareButtonCHeld() { const bool v = g_c.hold; g_c.hold = false; return v; }

@@ -1,8 +1,7 @@
-#include <string.h>
-#include "locale.h"
-#include "config.h"
+#include "translations.h"
+#include "settings.h"
 
-bool localeIsRussian() { return strcmp(UI_LANGUAGE, "ru") == 0; }
+bool localeIsRussian() { return settings().russian; }
 const char* tr(const char* en, const char* ru) { return localeIsRussian() ? ru : en; }
 String trString(const char* en, const char* ru) { return String(tr(en, ru)); }
 

@@ -23,19 +23,33 @@ flowchart LR
 
 ## Core modules
 
-- `agent.cpp` — normalizes Claude/Codex hook payloads, task timers, tool counts, permission grace logic.
-- `state.cpp` / `locale.cpp` — stable machine states and English/Russian labels.
-- `http_api.cpp` — hook/API server.
+- `agent.cpp` — provider registry (`claude`, `codex`), hook normalization, task timers, tool counts, permission grace logic.
+- `state.cpp` / `translations.cpp` — stable machine states and English/Russian labels.
+- `settings.cpp` — NVS-backed runtime settings: Wi-Fi, hostname, language, sound, brightness, enabled providers, admin password. `config.h` values are only defaults.
+- `wifi_manager.cpp` — station connection, setup access point + captive DNS, fallback AP, mDNS.
+- `http_api.cpp` — hook/API server, settings API, OTA upload, logs, crash data.
+- `web_page.cpp` — the self-contained settings page served at `/`.
+- `ota.cpp` — firmware writes and rollback confirmation.
+- `logger.cpp` — log ring buffer in no-init RAM (survives software resets).
+- `diagnostics.cpp` — reset reason, core dump summary, scheduled restarts.
+- `menu.cpp` — on-device settings menu and status panels (Wi-Fi setup, OTA).
+- `view.cpp` — backend-independent view selection (provider / All / Auto).
 - `hardware.cpp` — buttons/basic board abstraction.
 - `face_m5.cpp` — full 320×240 M5Stack UI.
 - `face_oled.cpp` — 128×64 monochrome UI.
 - `face_tft.cpp` — generic TFT_eSPI color UI.
 - `audio.cpp` — M5 speaker, piezo, MAX98357A and no-audio backends.
-- `diagnostics.cpp` — reset reason and boot diagnostics.
 
-## Two independent agent contexts
+## Adding a provider
 
-Claude and Codex never overwrite one another. Each context stores:
+1. Add an `AgentId` value and bump `AGENT_COUNT` in `agent.h`.
+2. Add `{key, name}` to `kProviders` in `agent.cpp`. `/hook/<key>`, settings, the menu, the web page and the All view pick it up.
+3. If its hook payload differs from Claude/Codex, normalize it in `agentHandleHookJson`.
+4. Optionally give it a brand color in each `face_*.cpp`.
+
+## Independent agent contexts
+
+Providers never overwrite one another. Each context stores:
 
 - state and detail
 - timestamp of last event

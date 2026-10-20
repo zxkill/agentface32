@@ -113,12 +113,16 @@ ST7789 breakout boards are not standardized. If your module has no CS pin, uses 
 Buttons are active-low: connect the configured GPIO to GND when pressed. Internal pull-ups are enabled.
 
 ```cpp
-#define BUTTON_A_PIN 32   // sound
+#define BUTTON_A_PIN 32   // sound / hold: settings menu
 #define BUTTON_B_PIN 33   // demo
 #define BUTTON_C_PIN 25   // view / hold for AUTO
 ```
 
-Use `-1` to disable a button. Without buttons, every important function is still available through HTTP (`/view`, `/anim`).
+Use `-1` to disable a button. In the settings menu **A** moves to the next item and **B**, **C** or holding **A** selects, so even a single button is enough. Without buttons, everything is available from the web page (`http://DEVICE_IP/`) and HTTP (`/view`, `/anim`, `/api/settings`).
+
+## Brightness
+
+The brightness setting drives the M5Stack backlight, PWM on `TFT_BL` for TFT profiles, and contrast on OLED profiles.
 
 ## Configuration overrides
 
