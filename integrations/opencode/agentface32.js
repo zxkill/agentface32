@@ -60,9 +60,12 @@ function shortError(value) {
 function createTracker() {
   const childSessions = new Set()
   // opencode V2 reports one busy period per session with
-  // session.execution.started -> succeeded | failed | interrupted. Keeping the
-  // set lets subagents and parallel tabs finish without ending the main task.
+  // session.execution.started -> succeeded | failed | interrupted.
+  // The first execution of a busy period is the user's task; later ones are
+  // subagents. Finish on the primary execution even if a child never reports
+  // its terminal event.
   const activeExecutions = new Set()
+  let primarySession = ""
 
   function handleEvent(event) {
     if (!event) return
@@ -86,21 +89,24 @@ function createTracker() {
         break
       }
       case "session.execution.started": {
-        // The first execution of a busy period is the user's task; child
-        // executions start while it is already active.
         const first = activeExecutions.size === 0
+        if (first && sessionID) primarySession = sessionID
         if (sessionID) activeExecutions.add(sessionID)
         if (first) send({ hook_event_name: "UserPromptSubmit" })
         break
       }
       case "session.execution.succeeded": {
         if (sessionID) activeExecutions.delete(sessionID)
-        if (activeExecutions.size === 0) send({ hook_event_name: "Stop" })
+        if (!primarySession || !sessionID || sessionID === primarySession) {
+          primarySession = ""
+          send({ hook_event_name: "Stop" })
+        }
         break
       }
       case "session.execution.failed": {
         if (sessionID) activeExecutions.delete(sessionID)
-        if (activeExecutions.size === 0) {
+        if (!primarySession || !sessionID || sessionID === primarySession) {
+          primarySession = ""
           send({ hook_event_name: "StopFailure", error: shortError(data.error) })
         }
         break
@@ -109,7 +115,8 @@ function createTracker() {
         if (sessionID) activeExecutions.delete(sessionID)
         // "superseded" means a newer prompt replaced this execution; the next
         // execution.started follows immediately, so do not flash "cancelled".
-        if (activeExecutions.size === 0 && data.reason !== "superseded") {
+        if ((!primarySession || !sessionID || sessionID === primarySession) && data.reason !== "superseded") {
+          primarySession = ""
           send({ hook_event_name: "Interrupt", reason: toolName(data.reason) })
         }
         break
