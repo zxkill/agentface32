@@ -73,14 +73,23 @@ providers acknowledge and ignore hooks.
 | --- | --- |
 | `session.created` | online / welcome (`SubagentStart` for child sessions) |
 | `session.deleted` | sleep (`SubagentStop` for child sessions) |
-| `chat.message` | new task |
+| `session.execution.started` | new task |
 | `tool.execute.before` | reading / editing / running, depending on the tool |
 | `tool.execute.after` | processing result |
 | `permission.asked` | needs attention |
 | `permission.replied` | permission granted / denied |
-| `session.idle` | done |
-| `session.error` | error |
-| `session.compacted` | compacting context |
+| `session.execution.succeeded` | done |
+| `session.execution.failed` | error |
+| `session.execution.interrupted` | cancelled |
+| `session.compaction.started` / `.ended` | compacting context |
+
+opencode V2 does **not** emit `session.idle` (it exists in the schema but is
+never published). Turn completion is the `session.execution.*` terminal event,
+so the plugin waits until every active execution has finished before reporting
+**done**. Parallel tabs and subagents therefore do not end the task early.
+
+V1 uses `chat.message` (new task), `session.idle` (done), `session.error` and
+`session.compacted`; the same plugin maps those as well.
 
 The plugin sends canonical PascalCase event names (`hook_event_name`), so the
 firmware treats opencode like its other providers while still accepting

@@ -17,6 +17,19 @@
 const DEFAULT_URL = "http://agentface32.local"
 const TIMEOUT_MS = 1500
 
+function debugLog(message) {
+  if (!process.env.AGENTFACE_DEBUG) return
+  try {
+    // Dynamic import keeps the normal path free of Node-specific modules.
+    import("node:fs").then((fs) => {
+      const path = (process.env.TEMP || "/tmp") + "/agentface-opencode.log"
+      fs.appendFileSync(path, new Date().toISOString() + " " + message + "\n")
+    })
+  } catch {
+    // Debug logging must never break the agent.
+  }
+}
+
 function send(payload) {
   const base = (process.env.AGENTFACE_URL || DEFAULT_URL).replace(/\/+$/, "")
   const controller = new AbortController()
@@ -46,29 +59,73 @@ function shortError(value) {
 // sessions so a subagent finishing does not mark the whole task as done.
 function createTracker() {
   const childSessions = new Set()
+  // opencode V2 reports one busy period per session with
+  // session.execution.started -> succeeded | failed | interrupted. Keeping the
+  // set lets subagents and parallel tabs finish without ending the main task.
+  const activeExecutions = new Set()
 
   function handleEvent(event) {
-    const props = (event && event.properties) || {}
-    const info = props.info || {}
-    const isChild = Boolean(info.parentID) || childSessions.has(props.sessionID)
+    if (!event) return
+    // V2 puts the payload in event.data; V1 used event.properties.
+    const data = event.data || event.properties || {}
+    const info = data.info || {}
+    const sessionID = toolName(data.sessionID || info.id)
+    const parentID = toolName(data.parentID || info.parentID)
+    const isChild = Boolean(parentID) || childSessions.has(sessionID)
+    debugLog("event " + JSON.stringify(event).slice(0, 1500))
 
-    switch (event && event.type) {
+    switch (event.type) {
       case "session.created": {
-        const child = Boolean(info.parentID)
-        if (child && info.id) childSessions.add(info.id)
-        send({ hook_event_name: child ? "SubagentStart" : "SessionStart", source: "startup" })
+        if (parentID && sessionID) childSessions.add(sessionID)
+        send({ hook_event_name: parentID ? "SubagentStart" : "SessionStart", source: "startup" })
         break
       }
       case "session.deleted": {
-        if (info.id) childSessions.delete(info.id)
+        if (sessionID) childSessions.delete(sessionID)
         send({ hook_event_name: isChild ? "SubagentStop" : "SessionEnd" })
         break
       }
+      case "session.execution.started": {
+        // The first execution of a busy period is the user's task; child
+        // executions start while it is already active.
+        const first = activeExecutions.size === 0
+        if (sessionID) activeExecutions.add(sessionID)
+        if (first) send({ hook_event_name: "UserPromptSubmit" })
+        break
+      }
+      case "session.execution.succeeded": {
+        if (sessionID) activeExecutions.delete(sessionID)
+        if (activeExecutions.size === 0) send({ hook_event_name: "Stop" })
+        break
+      }
+      case "session.execution.failed": {
+        if (sessionID) activeExecutions.delete(sessionID)
+        if (activeExecutions.size === 0) {
+          send({ hook_event_name: "StopFailure", error: shortError(data.error) })
+        }
+        break
+      }
+      case "session.execution.interrupted": {
+        if (sessionID) activeExecutions.delete(sessionID)
+        // "superseded" means a newer prompt replaced this execution; the next
+        // execution.started follows immediately, so do not flash "cancelled".
+        if (activeExecutions.size === 0 && data.reason !== "superseded") {
+          send({ hook_event_name: "Interrupt", reason: toolName(data.reason) })
+        }
+        break
+      }
+      case "session.compaction.started":
+        send({ hook_event_name: "PreCompact" })
+        break
+      case "session.compaction.ended":
+        send({ hook_event_name: "PostCompact" })
+        break
+      // V1 event names, kept for older opencode builds.
       case "session.idle":
         send({ hook_event_name: isChild ? "SubagentStop" : "Stop" })
         break
       case "session.error":
-        send({ hook_event_name: isChild ? "SubagentStop" : "StopFailure", error: shortError(props.error) })
+        send({ hook_event_name: isChild ? "SubagentStop" : "StopFailure", error: shortError(data.error) })
         break
       case "session.compacted":
         send({ hook_event_name: "PostCompact" })
@@ -76,12 +133,12 @@ function createTracker() {
       case "permission.asked":
         send({
           hook_event_name: "PermissionRequest",
-          tool_name: toolName(props.permission || props.tool || props.title),
+          tool_name: toolName(data.action || data.permission || data.tool || data.title),
         })
         break
       case "permission.replied": {
-        // opencode uses e.g. "once" / "always" / "reject".
-        const reply = String(props.response || props.reply || "").toLowerCase()
+        // opencode uses "once" / "always" / "reject".
+        const reply = String(data.response || data.reply || "").toLowerCase()
         const rejected = reply === "reject" || reply === "rejected" || reply === "deny" || reply === "denied"
         send({ hook_event_name: rejected ? "PermissionDenied" : "PermissionGranted" })
         break
@@ -131,16 +188,20 @@ const agentface32 = {
     const controller = new AbortController()
     void (async () => {
       try {
+        debugLog("event subscription starting")
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          debugLog("event received " + (event && event.type))
           tracker.handleEvent(event)
         }
-      } catch {
-        // The server is shutting down or the subscription was aborted.
+        debugLog("event subscription ended")
+      } catch (error) {
+        debugLog("event subscription failed: " + (error && error.message))
       }
     })()
 
     try {
-      await ctx.session.hook("prompt", (event) => tracker.handlePrompt(event))
+      // Task start/end come from session.execution.* events; the tool hooks
+      // provide the live file/command detail.
       await ctx.tool.hook("execute.before", (event) => tracker.handleToolBefore(event))
       await ctx.tool.hook("execute.after", (event) => tracker.handleToolAfter(event))
     } catch {
