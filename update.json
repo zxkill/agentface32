@@ -1,10 +1,10 @@
-﻿{
-    "version":  "0.9.1-test",
-    "release":  "https://github.com/zxkill/agentface32/releases/tag/v0.9.1-test",
-    "assets":  {
-                   "m5stack-basic":  {
-                                         "file":  "agentface32-v0.9.1-test-m5stack-basic-ota.bin",
-                                         "size":  1621072
-                                     }
-               }
+{
+  "version": "0.9.1-test",
+  "release": "https://github.com/zxkill/agentface32/releases/tag/v0.9.1-test",
+  "assets": {
+    "m5stack-basic": {
+      "file": "agentface32-v0.9.1-test-m5stack-basic-ota.bin",
+      "size": 1621072
+    }
+  }
 }
