@@ -15,8 +15,9 @@ All notable public changes are documented here.
   the same reading/editing/running states.
 - All-enabled view now lays out a card per provider; brand colors for the new
   agents.
-- Integrations: `integrations/opencode` plugin, `integrations/cline`
-  installer, `integrations/cursor` hooks + forwarder.
+- Integrations: `integrations/opencode` plugin (one file for opencode V2 and
+  V1 1.18.29+), `integrations/cline` installer, `integrations/cursor` hooks +
+  forwarder.
 - Documentation: `docs/OPENCODE.md`, `docs/CLINE.md`, `docs/CURSOR.md`,
   updated API/architecture/README in both languages.
 

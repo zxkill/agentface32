@@ -3,6 +3,10 @@
 opencode has a plugin API (not shell hooks). The bundled plugin subscribes to
 session, prompt and tool events and forwards them to `/hook/opencode`.
 
+The same file supports **opencode V2** (`setup(ctx)` with tool/session/event
+hooks) and **V1** from 1.18.29 (`server()` hooks). opencode V2 loads local
+plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/`.
+
 ## 1. Install the plugin
 
 Per project:
@@ -19,16 +23,26 @@ mkdir -p ~/.config/opencode/plugins
 cp integrations/opencode/agentface32.js ~/.config/opencode/plugins/
 ```
 
-Alternatively publish/host the file and list it in `opencode.json`:
+Alternatively list the file/package in `opencode.json`. Use the key that
+matches your opencode major version:
 
-```json
+```jsonc
+// opencode V2
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [{ "package": "./integrations/opencode/agentface32.js" }]
+}
+
+// opencode V1
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["./integrations/opencode/agentface32.js"]
 }
 ```
 
-Restart opencode after adding the plugin.
+Restart opencode after adding the plugin. If you use the desktop app or the
+background service, the already running server keeps its old plugin list:
+quit it or run `opencode run --standalone ...` once to start a fresh server.
 
 ## 2. Point the plugin at the device
 
