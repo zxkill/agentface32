@@ -69,6 +69,11 @@ Make sure the PC and ESP32 are on the same LAN/VLAN and client isolation is not 
 - If the direct call works, the forwarder cannot reach the device. Check
   `AGENTFACE_URL`, use the IP instead of `agentface32.local`, and look at
   `curl http://DEVICE_IP/logs` for lines starting with the provider key.
+- **Codex started from T3 Code / an IDE** uses `codex app-server`, which skips
+  hooks whose trust state is `modified` (for example after editing
+  `hooks.json`). Check and fix with `python tools/codex_trust_hooks.py --check`
+  and `python tools/codex_trust_hooks.py`, then start a new Codex thread. See
+  [Codex setup](CODEX.md#t3-code--ide-sessions-app-server-and-hook-trust).
 - Each guide has provider-specific notes: [opencode](OPENCODE.md),
   [Cline](CLINE.md), [Cursor](CURSOR.md).
 

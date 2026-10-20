@@ -18,6 +18,9 @@ All notable public changes are documented here.
 - Integrations: `integrations/opencode` plugin (one file for opencode V2 and
   V1 1.18.29+), `integrations/cline` installer, `integrations/cursor` hooks +
   forwarder.
+- `tools/codex_trust_hooks.py` re-approves edited Codex hooks for app-server
+  clients (T3 Code, IDE extensions), which otherwise skip `modified` hooks
+  silently. Documented in `docs/CODEX.md` and troubleshooting.
 - Documentation: `docs/OPENCODE.md`, `docs/CLINE.md`, `docs/CURSOR.md`,
   updated API/architecture/README in both languages.
 

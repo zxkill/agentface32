@@ -14,6 +14,37 @@ Official reference: https://learn.chatgpt.com/docs/hooks
 
 Non-managed Codex hooks are intentionally subject to trust review before execution.
 
+## T3 Code / IDE sessions (app-server) and hook trust
+
+Codex stores the approved hash of every non-managed hook in
+`$CODEX_HOME/config.toml` (`[hooks.state.'<key>']`). Editing `hooks.json` —
+even just adding a `commandWindows` variant — changes that hash and marks the
+hook **modified**.
+
+The interactive Codex TUI asks you to review modified hooks, but clients that
+use `codex app-server` (T3 Code, IDE extensions) do not show that prompt: they
+silently skip modified/untrusted hooks. `codex exec --dangerously-bypass-hook-trust`
+masks the problem for one CLI run only, which makes this easy to misdiagnose.
+
+Check the effective state:
+
+```bash
+python tools/codex_trust_hooks.py --check
+```
+
+If hooks show `modified`, re-approve the current definitions:
+
+```bash
+python tools/codex_trust_hooks.py            # updates existing hooks.state hashes
+python tools/codex_trust_hooks.py --dry-run  # show the pending change
+```
+
+The tool asks `codex app-server` for the current hashes and writes them into the
+existing `hooks.state` entries, keeping a timestamped backup of `config.toml`.
+It never creates trust for a hook Codex has not already discovered. After it
+runs, **restart T3 Code or start a new Codex thread** so the app-server reloads
+the config.
+
 The example has Unix/macOS `command` and Windows `commandWindows` forms. Both use `curl` and send stdin unchanged to:
 
 ```text
