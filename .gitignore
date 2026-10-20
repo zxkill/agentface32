@@ -1,4 +1,5 @@
 .pio/
+dist/
 .vscode/
 include/config.local.h
 *.log
