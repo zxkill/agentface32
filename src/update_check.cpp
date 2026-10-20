@@ -276,21 +276,29 @@ bool updateInstallNow() {
     return false;
   }
 
+  // Update.begin() allocates a 4 KB flash buffer. Do that before the TLS
+  // handshake: once the secure client is connected that allocation can fail
+  // on a fragmented heap, and Update reports it as "No Error".
+  const size_t expected = g_assetSize;
+  logInfo("update", "downloading %s (%u bytes), free heap %u", g_assetUrl.c_str(),
+          (unsigned)expected, (unsigned)ESP.getFreeHeap());
+  if (!otaStart(expected, "")) {
+    g_error = otaLastError().length() ? otaLastError() : String("Update: not enough memory");
+    http.end();
+    return false;
+  }
+
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
+    otaAbort();
     setError(String("Update HTTP ") + code);
     http.end();
     return false;
   }
 
   const int contentLength = http.getSize();
-  const size_t expected = contentLength > 0 ? (size_t)contentLength : g_assetSize;
-  logInfo("update", "downloading %s (%u bytes)", g_assetUrl.c_str(), (unsigned)expected);
-
-  if (!otaStart(expected, "")) {
-    g_error = otaLastError();
-    http.end();
-    return false;
+  if (contentLength > 0 && expected && (size_t)contentLength != expected) {
+    logWarn("update", "manifest size %u != Content-Length %d", (unsigned)expected, contentLength);
   }
 
   OtaSink sink(expected);
