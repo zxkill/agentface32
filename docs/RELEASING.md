@@ -74,3 +74,22 @@ gh release create "v$VER" \
 If the token cannot create releases, the fallback is to commit the images under
 `releases/v$VER/` with the same notes; a release is still preferable because it
 keeps binaries out of the Git history.
+
+## 6. Publish the update manifest
+
+The device does not call the GitHub API (large response, 60 requests/hour). It
+reads a small generated `update.json` from the `main` branch:
+
+```bash
+python tools/make_update_manifest.py \
+  --version "$VER" --dist "dist/v$VER" --out update.json
+git add update.json
+git commit -m "chore: publish update manifest for v$VER"
+git push origin main
+```
+
+Do this **after** the release assets are uploaded: devices that check in the
+gap would otherwise get a 404 for a file that does not exist yet. The firmware
+compares `version` with its own and downloads
+`https://github.com/zxkill/agentface32/releases/download/v<version>/<file>` for
+its `AGENTFACE_RELEASE_ENV`.

@@ -44,6 +44,7 @@ void settingsBegin() {
   g_settings.adminPassword = g_prefs.getString("admin", "");
   g_settings.russian = g_prefs.getBool("ru", strcmp(UI_LANGUAGE, "ru") == 0);
   g_settings.sound = g_prefs.getBool("sound", VOICE_ENABLED_BY_DEFAULT);
+  g_settings.autoUpdate = g_prefs.getBool("autoupd", true);
   g_settings.brightness = clampBrightness(g_prefs.getUChar("bright", (DISPLAY_BRIGHTNESS * 100) / 255));
 
   const uint32_t allProviders = (1UL << AGENT_COUNT) - 1;
@@ -104,6 +105,11 @@ void settingsSetRussian(bool russian) {
 void settingsSetSound(bool enabled) {
   g_settings.sound = enabled;
   g_prefs.putBool("sound", enabled);
+}
+
+void settingsSetAutoUpdate(bool enabled) {
+  g_settings.autoUpdate = enabled;
+  g_prefs.putBool("autoupd", enabled);
 }
 
 void settingsSetBrightness(uint8_t percent) {

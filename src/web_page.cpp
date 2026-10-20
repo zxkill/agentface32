@@ -45,6 +45,10 @@ pre{background:#0a0b0e;border:1px solid var(--line);border-radius:8px;padding:10
 <div class="msg" id="prefMsg"></div></section>
 
 <section><h2 data-t="firmware"></h2><div class="kv" id="fw"></div>
+<div class="kv" id="upd" style="margin-top:12px"></div>
+<label class="chk"><input type="checkbox" id="autoUpd" onchange="save({auto_update:this.checked}).then(loadUpdate)"><span data-t="autoUpdate"></span></label>
+<div class="row"><button class="sec" id="checkUpdBtn" onclick="checkUpdate()" data-t="checkUpdate"></button><button id="installUpd" class="hide" onclick="installUpdate()" data-t="installUpdate"></button></div>
+<div class="msg" id="updMsg"></div>
 <label data-t="fwFile"></label><input type="file" id="fwFile" accept=".bin">
 <div class="row" style="margin-top:10px"><button onclick="upload()" id="fwBtn" data-t="upload"></button></div>
 <progress id="fwProg" class="hide" max="100" value="0"></progress><div class="msg" id="fwMsg"></div></section>
@@ -66,6 +70,7 @@ const T={en:{status:"Status",network:"Network (SSID)",scan:"Scan",password:"Pass
 setupStart:"Start setup access point",setupStop:"Stop setup access point",setupTitle:"Wi-Fi setup mode",setupText:"Choose your network below and press \"Save and restart\". The device will reboot and join it.",
 providers:"Providers",providersHint:"Disabled providers are hidden and their hooks are ignored.",display:"Display and sound",brightness:"Brightness",language:"Language",sound:"Sound",
 firmware:"Firmware",fwFile:"Firmware file (.pio/build/<env>/firmware.bin)",upload:"Upload and install",logs:"Logs",refresh:"Refresh",follow:"Follow",download:"Download",
+update:"Update",autoUpdate:"Check GitHub for updates automatically",checkUpdate:"Check for updates",installUpdate:"Install update",current:"Current",checking:"Checking GitHub…",upToDate:"Latest version is installed",updateReady:"Available",installing:"Downloading and installing. Do not power off…",installConfirm:"Install update and restart?",
 crash:"Last crash",coredump:"Download core dump",clearCrash:"Clear",security:"Security",adminPass:"Admin password",adminHint:"Protects this page, firmware upload and logs (HTTP Basic auth, user: admin). Leave empty to disable.",
 saveAdmin:"Save password",reboot:"Restart",saved:"Saved",restarting:"Saved. Restarting…",scanning:"Scanning…",noNets:"No networks found",
 uploading:"Uploading…",installed:"Installed. Restarting, the page reloads when the device is back…",pickFile:"Choose a firmware file",confirmReboot:"Restart the device?",
@@ -74,6 +79,7 @@ ru:{status:"Состояние",network:"Сеть (SSID)",scan:"Поиск",pass
 setupStart:"Включить точку доступа настройки",setupStop:"Выключить точку доступа настройки",setupTitle:"Режим настройки Wi-Fi",setupText:"Выберите сеть ниже и нажмите «Сохранить и перезагрузить». Устройство перезагрузится и подключится к ней.",
 providers:"Провайдеры",providersHint:"Выключенные провайдеры скрыты, их хуки игнорируются.",display:"Экран и звук",brightness:"Яркость",language:"Язык",sound:"Звук",
 firmware:"Прошивка",fwFile:"Файл прошивки (.pio/build/<env>/firmware.bin)",upload:"Загрузить и установить",logs:"Логи",refresh:"Обновить",follow:"Следить",download:"Скачать",
+update:"Обновление",autoUpdate:"Автоматически проверять обновления на GitHub",checkUpdate:"Проверить обновления",installUpdate:"Установить обновление",current:"Текущая",checking:"Проверяю GitHub…",upToDate:"Установлена последняя версия",updateReady:"Доступна",installing:"Скачивание и установка. Не выключайте питание…",installConfirm:"Установить обновление и перезагрузить?",
 crash:"Последний сбой",coredump:"Скачать core dump",clearCrash:"Очистить",security:"Безопасность",adminPass:"Пароль администратора",adminHint:"Защищает эту страницу, загрузку прошивки и логи (HTTP Basic, пользователь admin). Пусто — без пароля.",
 saveAdmin:"Сохранить пароль",reboot:"Перезагрузить",saved:"Сохранено",restarting:"Сохранено. Перезагрузка…",scanning:"Поиск сетей…",noNets:"Сети не найдены",
 uploading:"Загрузка…",installed:"Установлено. Перезагрузка, страница обновится, когда устройство вернётся…",pickFile:"Выберите файл прошивки",confirmReboot:"Перезагрузить устройство?",
@@ -87,6 +93,15 @@ async function api(url,opt){const r=await fetch(url,opt);let j={};try{j=await r.
 function save(obj){return api("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)}).then(j=>{msg("prefMsg",j.restart?t("restarting"):t("saved"),true);return j}).catch(e=>msg("prefMsg",e.message,false))}
 function fmtUp(ms){const s=Math.floor(ms/1000);return Math.floor(s/3600)+"h "+Math.floor(s%3600/60)+"m "+s%60+"s"}
 function kv(el,rows){el.innerHTML=rows.map(([k,v])=>"<span>"+k+"</span><span>"+String(v).replace(/</g,"&lt;")+"</span>").join("")}
+async function loadUpdate(){try{const u=await api("/api/update");$("autoUpd").checked=u.auto;
+  kv($("upd"),[[t("current"),u.current],[t("updateReady"),u.latest||"—"]]);
+  $("installUpd").classList.toggle("hide",!u.available);
+  if(u.error)msg("updMsg",u.error,false);else if(u.available)msg("updMsg",t("updateReady")+": "+u.latest,true);else msg("updMsg",t("upToDate"),true)
+}catch(e){msg("updMsg",e.message,false)}}
+function checkUpdate(){msg("updMsg",t("checking"),true);$("checkUpdBtn").disabled=true;
+  api("/api/update/check",{method:"POST"}).then(loadUpdate).catch(e=>msg("updMsg",e.message,false)).finally(()=>$("checkUpdBtn").disabled=false)}
+function installUpdate(){if(!confirm(t("installConfirm")))return;msg("updMsg",t("installing"),true);$("installUpd").disabled=true;
+  api("/api/update/install",{method:"POST"}).then(()=>{msg("updMsg",t("installed"),true);waitBack()}).catch(e=>{msg("updMsg",e.message,false);$("installUpd").disabled=false})}
 async function load(){
   S=await api("/api/settings");L=T[S.language]||T.en;applyLang();
   $("ssid").value=S.wifi_ssid||"";$("host").value=S.hostname;$("lang").value=S.language;$("sound").checked=S.sound;
@@ -96,7 +111,7 @@ async function load(){
   document.querySelectorAll("[data-p]").forEach(c=>c.onchange=()=>{const o={};o[c.dataset.p]=c.checked;save({providers:o}).then(j=>{if(!j)c.checked=!c.checked})});
   $("setupBanner").classList.toggle("hide",!S.setup_active);$("setupBtn").textContent=t(S.setup_active?"setupStop":"setupStart");
   if(S.setup_active||!S.wifi_ssid)scan(false);
-  status();loadLogs(true);crash();
+  status();loadUpdate();loadLogs(true);crash();
 }
 async function status(){try{const h=await api("/health");$("sub").textContent=h.hardware+" · v"+h.version+" · "+(h.ip||"AP");
   kv($("status"),[[t("ip"),h.ip||"—"],[t("ssid"),h.wifi_ssid||"—"],[t("rssi"),h.ip?h.rssi+" dBm":"—"],[t("uptime"),fmtUp(h.uptime_ms)],[t("heap"),h.free_heap+" / min "+h.min_free_heap],[t("reset"),h.last_reset+" (#"+h.boot_count+")"]]);

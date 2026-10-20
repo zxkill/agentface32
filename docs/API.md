@@ -119,6 +119,7 @@ fields; omitted fields are unchanged:
   "hostname": "agentface32",
   "language": "ru",
   "sound": true,
+  "auto_update": true,
   "brightness": 60,
   "providers": {"claude": true, "codex": false, "opencode": true, "cline": true, "cursor": true},
   "admin_password": ""
@@ -139,6 +140,33 @@ curl -X POST http://DEVICE_IP/api/settings -H 'Content-Type: application/json' -
   starts a new scan.
 - `POST /api/wifi/setup?action=start|stop` — open/close the setup access point
   without rebooting.
+
+## Update check: `GET /api/update`
+
+Returns the current and published versions plus the auto-check setting:
+
+```json
+{
+  "ok": true,
+  "current": "0.9.0",
+  "latest": "0.9.0",
+  "available": false,
+  "auto": true,
+  "state": "idle",
+  "error": ""
+}
+```
+
+- `POST /api/update/check` — fetch `update.json` from GitHub now (blocking,
+  2–5 s) and return the same fields. A failed check still returns HTTP 200 with
+  `error` set.
+- `POST /api/update/install` — download the matching OTA asset and flash it.
+  The device restarts on success (`"restart": true`).
+
+The manifest is
+`https://raw.githubusercontent.com/zxkill/agentface32/main/update.json`; it
+contains one OTA file name and size per PlatformIO environment. The device
+checks 15 s after boot and then every 24 h when `auto_update` is enabled.
 
 ## Firmware update: `POST /update`
 

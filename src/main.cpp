@@ -12,6 +12,7 @@
 #include "ota.h"
 #include "settings.h"
 #include "translations.h"
+#include "update_check.h"
 #include "version.h"
 #include "wifi_manager.h"
 
@@ -67,6 +68,7 @@ void setup() {
 
   wifiManagerBegin();
   httpApiBegin();
+  updateBegin();
 }
 
 void loop() {
@@ -77,6 +79,7 @@ void loop() {
   httpApiLoop();
   agentLoop();
   otaLoop();
+  updateLoop();
   audioLoop();
   menuLoop();
   faceLoop();

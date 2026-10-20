@@ -45,6 +45,7 @@ AgentFace32 gives that background activity a physical presence. A glance at the 
 - **No-config Wi-Fi setup.** On first boot the device opens its own access point with a captive portal; pick your network in the browser and it reboots onto it.
 - **Settings menu** on the device (hold **A**) and in the browser (`http://DEVICE_IP/`): providers, brightness, sound, language, Wi-Fi.
 - **Choose providers.** Enable only the agents you actually use; disabled providers disappear from the views and their hooks are ignored. The registry is one row per provider, ready for the next tool.
+- **Updates from GitHub on the device.** Check for a new release in the settings menu or the web page (or let it check automatically), then install the matching OTA image with one press. TLS is certificate-verified; rollback still protects a bad image.
 - **Wi-Fi firmware updates** with automatic rollback if the new image crashes: `pio run -e m5stack-basic -t ota`.
 - **Logs and crash dumps over Wi-Fi.** A log ring buffer survives crashes and restarts; core dumps can be decoded from your PC.
 - **English and Russian UI**, switchable at runtime.
@@ -269,6 +270,7 @@ CI runs the same matrix on GitHub.
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Add a new board/display](docs/ADDING_HARDWARE.md)
 - [Demo/video checklist](docs/MEDIA.md)
+- [Making a release](docs/RELEASING.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Security and privacy

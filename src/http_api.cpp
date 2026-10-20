@@ -13,6 +13,7 @@
 #include "ota.h"
 #include "settings.h"
 #include "translations.h"
+#include "update_check.h"
 #include "version.h"
 #include "web_page.h"
 #include "wifi_manager.h"
@@ -122,6 +123,7 @@ static void handleGetSettings() {
   doc["hostname"] = s.hostname;
   doc["language"] = s.russian ? "ru" : "en";
   doc["sound"] = audioIsEnabled();
+  doc["auto_update"] = s.autoUpdate;
 #if defined(HARDWARE_HAS_BRIGHTNESS)
   doc["brightness_supported"] = true;
 #else
@@ -194,6 +196,7 @@ static void handlePostSettings() {
   }
   if (doc["language"].is<const char*>()) settingsSetRussian(String(doc["language"].as<const char*>()) == "ru");
   if (doc["sound"].is<bool>()) settingsSetSound(doc["sound"].as<bool>());
+  if (doc["auto_update"].is<bool>()) settingsSetAutoUpdate(doc["auto_update"].as<bool>());
   if (doc["brightness"].is<int>()) settingsSetBrightness((uint8_t)constrain(doc["brightness"].as<int>(), 0, 100));
   if (doc["admin_password"].is<const char*>()) settingsSetAdminPassword(doc["admin_password"].as<const char*>());
   if (doc["providers"].is<JsonObject>()) {
@@ -263,6 +266,53 @@ static void handleWifiSetup() {
   doc["ok"] = true;
   doc["setup_active"] = wifiSetupActive();
   sendJson(200, doc);
+}
+
+// --- GitHub release updates ----------------------------------------------------
+
+static void addUpdateStatus(JsonDocument& doc) {
+  doc["current"] = AGENT_COMPANION_VERSION;
+  doc["latest"] = updateLatestVersion();
+  doc["available"] = updateAvailable();
+  doc["auto"] = settings().autoUpdate;
+  doc["state"] = updateStateName();
+  doc["error"] = updateLastError();
+}
+
+static void handleUpdateStatus() {
+  if (!requireAdmin()) return;
+  JsonDocument doc;
+  doc["ok"] = true;
+  addUpdateStatus(doc);
+  sendJson(200, doc);
+}
+
+static void handleUpdateCheck() {
+  if (!requireAdmin()) return;
+  JsonDocument doc;
+  doc["ok"] = true;
+  const bool ok = updateCheckNow();
+  addUpdateStatus(doc);
+  // A failed check is still a valid API response; the UI shows doc.error.
+  doc["ok"] = true;
+  doc["checked"] = ok;
+  sendJson(200, doc);
+}
+
+static void handleUpdateInstall() {
+  if (!requireAdmin()) return;
+  JsonDocument doc;
+  const bool ok = updateInstallNow();
+  doc["ok"] = ok;
+  if (!ok) {
+    doc["error"] = updateLastError().length() ? updateLastError() : String("update failed");
+    sendJson(200, doc);
+    return;
+  }
+  doc["restart"] = true;
+  doc["version"] = updateLatestVersion();
+  sendJson(200, doc);
+  diagnosticsScheduleRestart(800, "GitHub update");
 }
 
 // --- OTA ----------------------------------------------------------------------
@@ -405,6 +455,8 @@ static void handleHealth() {
   size_t addr = 0, size = 0;
   doc["coredump"] = diagnosticsCoreDumpInfo(&addr, &size);
   doc["log_bytes"] = loggerEnd();
+  doc["update_available"] = updateAvailable();
+  doc["update_latest"] = updateLatestVersion();
   addAllAgents(doc);
   sendJson(200, doc);
 }
@@ -438,6 +490,7 @@ void httpApiBegin() {
       "GET  /                     settings page\n"
       "GET  /api/settings, POST /api/settings (JSON)\n"
       "GET  /api/wifi/scan, POST /api/wifi/setup?action=start|stop\n"
+      "GET  /api/update, POST /api/update/check|install\n"
       "POST /update               firmware upload (multipart, field 'firmware', ?md5=)\n"
       "GET  /logs?since=N         log ring buffer (X-Log-Next header)\n"
       "GET  /api/crash, POST /api/crash/clear, GET /coredump\n"
@@ -509,6 +562,9 @@ void httpApiBegin() {
   server.on("/api/settings", HTTP_POST, handlePostSettings);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
   server.on("/api/wifi/setup", HTTP_POST, handleWifiSetup);
+  server.on("/api/update", HTTP_GET, handleUpdateStatus);
+  server.on("/api/update/check", HTTP_POST, handleUpdateCheck);
+  server.on("/api/update/install", HTTP_POST, handleUpdateInstall);
   server.on("/api/reboot", HTTP_POST, []() {
     if (!requireAdmin()) return;
     JsonDocument doc;

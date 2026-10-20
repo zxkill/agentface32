@@ -8,13 +8,16 @@
 #include "ota.h"
 #include "settings.h"
 #include "translations.h"
+#include "update_check.h"
 #include "version.h"
 #include "wifi_manager.h"
 
 static constexpr uint32_t kMenuTimeoutMs = 30000;
 static const uint8_t kBrightnessSteps[] = {10, 25, 50, 75, 100};
 
-enum class ItemKind : uint8_t { Brightness, Provider, Sound, Language, WifiSetup, Network, Reboot, Exit };
+enum class ItemKind : uint8_t {
+  Brightness, Provider, Sound, Language, Update, AutoUpdate, WifiSetup, Network, Reboot, Exit
+};
 struct MenuItem {
   ItemKind kind;
   AgentId agent;
@@ -41,6 +44,8 @@ static void buildItems() {
   for (uint8_t i = 0; i < AGENT_COUNT; ++i) addItem(ItemKind::Provider, agentAt(i));
   addItem(ItemKind::Sound);
   addItem(ItemKind::Language);
+  addItem(ItemKind::Update);
+  addItem(ItemKind::AutoUpdate);
   addItem(ItemKind::WifiSetup);
   addItem(ItemKind::Network);
   addItem(ItemKind::Reboot);
@@ -77,6 +82,17 @@ static void fillMenuPanel() {
         line.label = tr("Language", "Язык");
         line.value = localeIsRussian() ? "RU" : "EN";
         break;
+      case ItemKind::Update:
+        line.label = tr("Update", "Обновление");
+        if (otaInProgress()) line.value = String(otaProgress()) + "%";
+        else if (updateAvailable()) line.value = updateLatestVersion();
+        else if (updateLastError().length()) line.value = tr("error", "ошибка");
+        else line.value = String("v") + AGENT_COMPANION_VERSION;
+        break;
+      case ItemKind::AutoUpdate:
+        line.label = tr("Auto update", "Авто-обновление");
+        line.value = onOff(settings().autoUpdate);
+        break;
       case ItemKind::WifiSetup:
         line.label = tr("Wi-Fi setup", "Настройка Wi-Fi");
         line.value = wifiSetupActive() ? tr("stop", "стоп") : tr("start", "запуск");
@@ -103,6 +119,24 @@ void menuApplySettings() {
   faceViewSanitize();
 }
 
+static void showUpdatePanel(const char* title, const String& value, int progress) {
+  FacePanel& p = g_infoPanel;
+  p.title = title;
+  p.selected = -1;
+  p.progress = progress;
+  p.count = 0;
+  p.lines[p.count++] = {tr("Version", "Версия"), value};
+  p.footer = progress >= 0 ? tr("Do not power off", "Не выключайте питание") : "";
+  faceShowPanel(&p);
+  faceRenderNow();
+}
+
+static void updateProgress(UpdateStage stage, uint8_t percent) {
+  if (stage != UpdateStage::Downloading) return;
+  showUpdatePanel(tr("Installing update", "Установка обновления"),
+                  String(percent) + "%", percent);
+}
+
 static void activate(const MenuItem& item) {
   switch (item.kind) {
     case ItemKind::Brightness: {
@@ -127,6 +161,26 @@ static void activate(const MenuItem& item) {
     case ItemKind::Language:
       settingsSetRussian(!localeIsRussian());
       break;
+    case ItemKind::Update:
+      if (updateAvailable()) {
+        showUpdatePanel(tr("Installing update", "Установка обновления"), updateLatestVersion(), 0);
+        if (updateInstallNow()) diagnosticsScheduleRestart(800, "GitHub update");
+        else showUpdatePanel(tr("Update failed", "Ошибка обновления"), updateLastError(), -1);
+      } else {
+        showUpdatePanel(tr("Checking GitHub", "Проверяю GitHub"), "", -1);
+        updateCheckNow();
+        if (updateAvailable()) {
+          showUpdatePanel(tr("Update available", "Доступно обновление"), updateLatestVersion(), -1);
+        } else if (updateLastError().length()) {
+          showUpdatePanel(tr("Update failed", "Ошибка обновления"), updateLastError(), -1);
+        } else {
+          showUpdatePanel(tr("Up to date", "Обновлений нет"), String("v") + AGENT_COMPANION_VERSION, -1);
+        }
+      }
+      break;
+    case ItemKind::AutoUpdate:
+      settingsSetAutoUpdate(!settings().autoUpdate);
+      break;
     case ItemKind::WifiSetup:
       if (wifiSetupActive()) wifiStopSetup();
       else wifiStartSetup();
@@ -146,6 +200,7 @@ static void activate(const MenuItem& item) {
 
 void menuBegin() {
   buildItems();
+  updateSetProgressCallback(updateProgress);
 }
 
 bool menuIsOpen() { return g_open; }

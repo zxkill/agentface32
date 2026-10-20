@@ -11,6 +11,7 @@ struct DeviceSettings {
   String adminPassword;   // protects settings/OTA/logs when non-empty
   bool russian = false;
   bool sound = false;
+  bool autoUpdate = true;
   uint8_t brightness = 70; // percent, 10..100
   uint32_t providerMask = 0;
 };
@@ -28,6 +29,7 @@ bool settingsSetHostname(const String& hostname);
 void settingsSetAdminPassword(const String& password);
 void settingsSetRussian(bool russian);
 void settingsSetSound(bool enabled);
+void settingsSetAutoUpdate(bool enabled);
 void settingsSetBrightness(uint8_t percent);
 // Refuses to disable the last enabled provider.
 bool settingsSetProviderEnabled(AgentId agent, bool enabled);

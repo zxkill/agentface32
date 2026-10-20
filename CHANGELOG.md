@@ -2,6 +2,23 @@
 
 All notable public changes are documented here.
 
+## [0.9.0] - 2026-10-20
+
+### Updates from GitHub
+
+- The device checks a small `update.json` manifest in the repository, compares
+  the published version with its own and offers the matching OTA asset.
+- Check manually from the settings menu or the web page; auto-check is on by
+  default (15 s after boot, then every 24 h) and can be disabled.
+- One-press install from the device menu or the web UI: HTTPS download into the
+  inactive OTA slot, progress screen, restart and the existing rollback
+  protection.
+- TLS uses pinned GitHub root CAs (USERTrust ECC + ISRG Root X1); no insecure
+  fallback.
+- Release images for all seven hardware profiles are attached to GitHub
+  releases; `docs/RELEASING.md` and `tools/make_update_manifest.py` cover the
+  local release flow.
+
 ## [0.8.0] - 2026-10-20
 
 ### More providers

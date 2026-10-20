@@ -9,7 +9,7 @@ enum class FaceViewMode : uint8_t {
 };
 
 // Full-screen list used by the settings menu, Wi-Fi setup and OTA progress.
-static constexpr uint8_t FACE_PANEL_MAX_LINES = 12;
+static constexpr uint8_t FACE_PANEL_MAX_LINES = 16;
 struct FacePanelLine {
   String label;
   String value;
