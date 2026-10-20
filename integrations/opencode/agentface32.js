@@ -59,13 +59,6 @@ function shortError(value) {
 // sessions so a subagent finishing does not mark the whole task as done.
 function createTracker() {
   const childSessions = new Set()
-  // opencode V2 reports one busy period per session with
-  // session.execution.started -> succeeded | failed | interrupted.
-  // The first execution of a busy period is the user's task; later ones are
-  // subagents. Finish on the primary execution even if a child never reports
-  // its terminal event.
-  const activeExecutions = new Set()
-  let primarySession = ""
 
   function handleEvent(event) {
     if (!event) return
@@ -88,39 +81,24 @@ function createTracker() {
         send({ hook_event_name: isChild ? "SubagentStop" : "SessionEnd" })
         break
       }
-      case "session.execution.started": {
-        const first = activeExecutions.size === 0
-        if (first && sessionID) primarySession = sessionID
-        if (sessionID) activeExecutions.add(sessionID)
-        if (first) send({ hook_event_name: "UserPromptSubmit" })
+      case "session.execution.started":
+        // Child sessions start while the main task is already running, so
+        // only a root session starts a new task on the display.
+        if (!isChild) send({ hook_event_name: "UserPromptSubmit" })
         break
-      }
-      case "session.execution.succeeded": {
-        if (sessionID) activeExecutions.delete(sessionID)
-        if (!primarySession || !sessionID || sessionID === primarySession) {
-          primarySession = ""
-          send({ hook_event_name: "Stop" })
-        }
+      case "session.execution.succeeded":
+        if (!isChild) send({ hook_event_name: "Stop" })
         break
-      }
-      case "session.execution.failed": {
-        if (sessionID) activeExecutions.delete(sessionID)
-        if (!primarySession || !sessionID || sessionID === primarySession) {
-          primarySession = ""
-          send({ hook_event_name: "StopFailure", error: shortError(data.error) })
-        }
+      case "session.execution.failed":
+        if (!isChild) send({ hook_event_name: "StopFailure", error: shortError(data.error) })
         break
-      }
-      case "session.execution.interrupted": {
-        if (sessionID) activeExecutions.delete(sessionID)
+      case "session.execution.interrupted":
         // "superseded" means a newer prompt replaced this execution; the next
         // execution.started follows immediately, so do not flash "cancelled".
-        if ((!primarySession || !sessionID || sessionID === primarySession) && data.reason !== "superseded") {
-          primarySession = ""
+        if (!isChild && data.reason !== "superseded") {
           send({ hook_event_name: "Interrupt", reason: toolName(data.reason) })
         }
         break
-      }
       case "session.compaction.started":
         send({ hook_event_name: "PreCompact" })
         break
@@ -207,8 +185,10 @@ const agentface32 = {
     })()
 
     try {
-      // Task start/end come from session.execution.* events; the tool hooks
-      // provide the live file/command detail.
+      // The prompt hook gives an early task start; session.execution.started
+      // repeats it if the event subscription was established late. End comes
+      // from session.execution.* events.
+      await ctx.session.hook("prompt", (event) => tracker.handlePrompt(event))
       await ctx.tool.hook("execute.before", (event) => tracker.handleToolBefore(event))
       await ctx.tool.hook("execute.after", (event) => tracker.handleToolAfter(event))
     } catch {

@@ -85,10 +85,9 @@ providers acknowledge and ignore hooks.
 
 opencode V2 does **not** emit `session.idle` (it exists in the schema but is
 never published). Turn completion is the `session.execution.*` terminal event,
-so the plugin reports **done** when the main (first) execution of a busy period
-succeeds, fails or is interrupted. Subagent executions are tracked separately
-and cannot end the task early, even if a child session never reports its own
-terminal event.
+so the plugin reports **done** when a root session's execution succeeds, fails
+or is interrupted. Subagent sessions are recognised by `session.created` /
+`parentID`, so their completion does not end the task early.
 
 V1 uses `chat.message` (new task), `session.idle` (done), `session.error` and
 `session.compacted`; the same plugin maps those as well.
