@@ -89,7 +89,9 @@ git push origin main
 ```
 
 Do this **after** the release assets are uploaded: devices that check in the
-gap would otherwise get a 404 for a file that does not exist yet. The firmware
+gap would otherwise get a 404 for a file that does not exist yet.
+`raw.githubusercontent.com` caches `update.json` for a few minutes, so allow
+that before expecting already-running devices to see the new version. The firmware
 compares `version` with its own and downloads
 `https://github.com/zxkill/agentface32/releases/download/v<version>/<file>` for
 its `AGENTFACE_RELEASE_ENV`.
