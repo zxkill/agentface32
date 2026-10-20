@@ -28,6 +28,7 @@ static constexpr uint16_t C_GREEN    = 0x67EC;
 static constexpr uint16_t C_YELLOW   = 0xFFE0;
 static constexpr uint16_t C_ORANGE   = 0xFD20;
 static constexpr uint16_t C_RED      = 0xF986;
+static constexpr uint16_t C_PURPLE   = 0xA81F;
 
 static uint16_t accentForState(AgentState state) {
   switch (state) {
@@ -46,7 +47,13 @@ static uint16_t accentForState(AgentState state) {
 }
 
 static uint16_t brandColor(AgentId agent) {
-  return agent == AgentId::Codex ? C_GREEN : C_WHITE;
+  switch (agent) {
+    case AgentId::Codex: return C_GREEN;
+    case AgentId::OpenCode: return C_CYAN;
+    case AgentId::Cline: return C_YELLOW;
+    case AgentId::Cursor: return C_PURPLE;
+    default: return C_WHITE;
+  }
 }
 
 static String taskClock(uint32_t ms) {
@@ -427,6 +434,9 @@ static void renderAgentCard(AgentId agent, int y, int height) {
     String detail = seen ? agentGetDetail(agent) : tr("Waiting for first hook", "Жду первый hook");
     uiDrawText(g_canvas, UI_FONT_SMALL, detail, 23, y + 38, C_TEXT, C_PANEL, 270);
   }
+
+  // Three or more providers leave room for the name and state only.
+  if (h < 55) return;
 
   String stats;
   if (agentTaskActive(agent)) {

@@ -11,13 +11,13 @@ agentface32
 ## Product title
 
 ```text
-AgentFace32 — ESP32 desk display for Claude Code & Codex
+AgentFace32 — ESP32 desk display for your coding agents
 ```
 
 ## GitHub About / Description
 
 ```text
-Animated ESP32 desk display for Claude Code and Codex. Multi-agent status, expressive faces, task timers, hooks, OLED/TFT/M5Stack support, optional sound — all local, no cloud.
+Animated ESP32 desk display for Claude Code, Codex, opencode, Cline and Cursor. Multi-agent status, expressive faces, task timers, hooks, OLED/TFT/M5Stack support, optional sound — all local, no cloud.
 ```
 
 ## Topics
@@ -26,6 +26,9 @@ Animated ESP32 desk display for Claude Code and Codex. Multi-agent status, expre
 esp32
 claude-code
 codex
+opencode
+cline
+cursor
 ai-agents
 coding-agent
 developer-tools

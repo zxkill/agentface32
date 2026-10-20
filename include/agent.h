@@ -6,9 +6,12 @@
 // table in agent.cpp and bit positions in the provider settings mask.
 enum class AgentId : uint8_t {
   Claude = 0,
-  Codex = 1
+  Codex = 1,
+  OpenCode = 2,
+  Cline = 3,
+  Cursor = 4
 };
-static constexpr uint8_t AGENT_COUNT = 2;
+static constexpr uint8_t AGENT_COUNT = 5;
 
 const char* agentName(AgentId agent);   // display name, e.g. "Claude"
 const char* agentKey(AgentId agent);    // URL/settings key, e.g. "claude"

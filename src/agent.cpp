@@ -43,14 +43,27 @@ static const AgentContext& cctx(AgentId agent) { return g_agents[idx(agent)]; }
 
 // Provider registry. Adding a provider: extend AgentId/AGENT_COUNT in agent.h
 // and add a row here; /hook/<key>, settings and the UI pick it up.
+// The dialect selects the small payload normalizer in agentHandleHookJson.
+enum class HookDialect : uint8_t {
+  Claude,    // Claude Code: PascalCase hook_event_name, tool_input
+  Codex,     // Codex: Claude-shaped payload plus permission quirks
+  Cursor,    // Cursor: camelCase events, top-level hook fields
+  Cline,     // Cline: hookName + preToolUse.toolName/parameters
+  OpenCode   // OpenCode plugin we ship: canonical event names
+};
+
 struct ProviderInfo {
   const char* key;
   const char* name;
+  HookDialect dialect;
 };
 
 static const ProviderInfo kProviders[AGENT_COUNT] = {
-  {"claude", "Claude"},
-  {"codex", "Codex"},
+  {"claude", "Claude", HookDialect::Claude},
+  {"codex", "Codex", HookDialect::Codex},
+  {"opencode", "OpenCode", HookDialect::OpenCode},
+  {"cline", "Cline", HookDialect::Cline},
+  {"cursor", "Cursor", HookDialect::Cursor},
 };
 
 const char* agentName(AgentId agent) { return kProviders[idx(agent)].name; }
@@ -68,6 +81,41 @@ bool agentFromKey(const String& raw, AgentId* out) {
     }
   }
   return false;
+}
+
+static HookDialect dialectOf(AgentId agent) { return kProviders[idx(agent)].dialect; }
+
+static String fieldString(JsonVariant obj, const char* key) {
+  if (!obj.is<JsonObject>()) return String();
+  const char* raw = obj[key] | "";
+  return String(raw);
+}
+
+static String firstField(JsonVariant obj, const char* const* keys, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    String value = fieldString(obj, keys[i]);
+    if (value.length()) return value;
+  }
+  return String();
+}
+
+// Every provider puts the tool parameters somewhere slightly different:
+// Claude/Cursor use tool_input, Cline nests them in preToolUse.parameters,
+// and our OpenCode plugin forwards them as tool_input/args.
+static JsonVariant toolInputOf(JsonDocument& doc) {
+  if (doc["tool_input"].is<JsonObject>()) return doc["tool_input"];
+  if (doc["preToolUse"]["parameters"].is<JsonObject>()) return doc["preToolUse"]["parameters"];
+  if (doc["postToolUse"]["parameters"].is<JsonObject>()) return doc["postToolUse"]["parameters"];
+  if (doc["args"].is<JsonObject>()) return doc["args"];
+  return doc.as<JsonVariant>();
+}
+
+static String toolNameOf(JsonDocument& doc) {
+  const char* tool = doc["tool_name"] | "";
+  if (!strlen(tool)) tool = doc["preToolUse"]["toolName"] | "";
+  if (!strlen(tool)) tool = doc["postToolUse"]["toolName"] | "";
+  if (!strlen(tool)) tool = doc["tool"] | "";
+  return String(tool);
 }
 
 static String oneLine(String s) {
@@ -224,89 +272,151 @@ uint32_t agentLastEventAt(AgentId agent) { return cctx(agent).lastEventAt; }
 bool agentHasSeen(AgentId agent) { return cctx(agent).seen; }
 AgentId agentMostRecent() { return g_mostRecent; }
 
-static bool toolLooksLikeRead(const char* tool) {
-  if (!tool || !strlen(tool)) return false;
-  String t(tool);
-  t.toLowerCase();
-  return t == "read" || t.indexOf("read_file") >= 0 || t.indexOf("grep") >= 0 ||
-         t.indexOf("search") >= 0 || t.indexOf("find") >= 0 || t.indexOf("list") >= 0 ||
-         t.indexOf("glob") >= 0;
+static bool toolLooksLikeRead(const String& tool) {
+  return tool.indexOf("read") >= 0 || tool.indexOf("grep") >= 0 ||
+         tool.indexOf("search") >= 0 || tool.indexOf("find") >= 0 ||
+         tool.indexOf("list") >= 0 || tool.indexOf("glob") >= 0;
 }
 
-static void handlePreToolUse(AgentId agent, JsonDocument& doc, const char* tool) {
+// Tool naming differs per provider:
+//   Claude/Cursor: Read, Write, Shell, Grep, WebFetch
+//   Cline: read_file, write_to_file, execute_command, search_files
+//   OpenCode: read, write, bash, grep, webfetch
+// Classification is therefore substring-based, not an exact-name match.
+static void handlePreToolUse(AgentId agent, JsonVariant input, const String& tool) {
   AgentContext& c = ctx(agent);
   if (!c.taskActive) taskStart(agent);
   ++c.toolCount;
 
-  const char* filePath = doc["tool_input"]["file_path"] | "";
-  if (!strlen(filePath)) filePath = doc["tool_input"]["path"] | "";
-  const char* command = doc["tool_input"]["command"] | "";
-  const char* pattern = doc["tool_input"]["pattern"] | "";
-  const char* query = doc["tool_input"]["query"] | "";
-  const char* url = doc["tool_input"]["url"] | "";
+  static const char* const kPathKeys[] = {"file_path", "path", "filePath", "file"};
+  static const char* const kCommandKeys[] = {"command", "cmd"};
+  static const char* const kPatternKeys[] = {"pattern", "regex", "query", "search"};
+  static const char* const kUrlKeys[] = {"url", "uri"};
 
-  if (!strcmp(tool, "Read")) {
-    agentSetState(agent, AgentState::Reading,
-                  strlen(filePath) ? shorten(fileDetail(filePath)) : tr("Reading file", "Читаю файл"), false);
-    return;
-  }
+  const String filePath = firstField(input, kPathKeys, sizeof(kPathKeys) / sizeof(kPathKeys[0]));
+  const String command = firstField(input, kCommandKeys, sizeof(kCommandKeys) / sizeof(kCommandKeys[0]));
+  const String pattern = firstField(input, kPatternKeys, sizeof(kPatternKeys) / sizeof(kPatternKeys[0]));
+  const String url = firstField(input, kUrlKeys, sizeof(kUrlKeys) / sizeof(kUrlKeys[0]));
 
-  if (!strcmp(tool, "Grep")) {
-    String d = strlen(pattern) ? String(tr("Search: ", "Ищу: ")) + pattern : tr("Searching project", "Ищу по проекту");
-    agentSetState(agent, AgentState::Reading, shorten(d), false);
-    return;
-  }
+  String lower(tool);
+  lower.toLowerCase();
 
-  if (!strcmp(tool, "Glob")) {
-    String d = strlen(pattern) ? String(tr("Pattern: ", "Шаблон: ")) + pattern : tr("Finding files", "Ищу файлы");
-    agentSetState(agent, AgentState::Reading, shorten(d), false);
-    return;
-  }
+  const bool isShell = lower == "bash" || lower == "powershell" || lower == "shell" ||
+                       lower == "execute_command" || lower == "run_command" ||
+                       lower == "terminal" || lower.indexOf("shell") >= 0;
+  const bool isWeb = lower.indexOf("web_fetch") >= 0 || lower.indexOf("webfetch") >= 0 ||
+                     lower.indexOf("web_search") >= 0 || lower.indexOf("websearch") >= 0 ||
+                     lower.indexOf("browser_action") >= 0;
+  const bool isWebSearch = lower.indexOf("search") >= 0 && !command.length();
+  const bool isPatch = lower == "apply_patch" || lower.indexOf("apply_patch") >= 0;
+  const bool isEdit = lower.indexOf("edit") >= 0 || lower.indexOf("write") >= 0 ||
+                      isPatch || lower.indexOf("replace_in_file") >= 0 ||
+                      lower.indexOf("notebookedit") >= 0 || lower == "delete";
+  const bool isGlob = lower.indexOf("glob") >= 0 || lower.indexOf("list") >= 0;
+  const bool isGrep = lower.indexOf("grep") >= 0;
 
-  if (!strcmp(tool, "WebFetch")) {
-    String host = hostFromUrl(url);
+  if (isWeb) {
+    if (isWebSearch) {
+      String d = pattern.length() ? String(tr("Search: ", "Ищу: ")) + pattern : tr("Searching web", "Ищу в интернете");
+      agentSetState(agent, AgentState::Reading, shorten(d), false);
+      return;
+    }
+    String host = hostFromUrl(url.c_str());
     agentSetState(agent, AgentState::Reading,
                   host.length() ? String(tr("Page: ", "Страница: ")) + host : tr("Opening page", "Открываю страницу"), false);
     return;
   }
 
-  if (!strcmp(tool, "WebSearch")) {
-    String d = strlen(query) ? String(tr("Search: ", "Ищу: ")) + query : tr("Searching web", "Ищу в интернете");
-    agentSetState(agent, AgentState::Reading, shorten(d), false);
-    return;
-  }
-
-  if (!strcmp(tool, "Edit") || !strcmp(tool, "Write") || !strcmp(tool, "NotebookEdit")) {
-    agentSetState(agent, AgentState::Typing,
-                  strlen(filePath) ? shorten(fileDetail(filePath)) : tr("Editing file", "Изменяю файл"), false);
+  if (isShell) {
+    String d = command.length() ? String(tr("Command: ", "Команда: ")) + command : tr("Running command", "Выполняю команду");
+    agentSetState(agent, AgentState::Running, shorten(d), false);
     return;
   }
 
   // Codex reports file edits as apply_patch and places the patch text in
   // tool_input.command. Extract the first affected path when possible.
-  if (!strcmp(tool, "apply_patch")) {
-    String path = firstPatchPath(command);
+  if (isPatch) {
+    String path = firstPatchPath(command.c_str());
+    if (!path.length()) path = filePath;
     agentSetState(agent, AgentState::Typing,
                   path.length() ? String(tr("File: ", "Файл: ")) + path : tr("Editing files", "Изменяю файлы"), false);
     return;
   }
 
-  if (!strcmp(tool, "Bash") || !strcmp(tool, "PowerShell")) {
-    String d = strlen(command) ? String(tr("Command: ", "Команда: ")) + command : tr("Running command", "Выполняю команду");
-    agentSetState(agent, AgentState::Running, shorten(d), false);
-    return;
-  }
-
-  // Codex MCP/local tools often have names such as mcp__fs__read_file.
-  // If an input path is available, surface it instead of a long tool id.
-  if (toolLooksLikeRead(tool)) {
-    String d = strlen(filePath) ? fileDetail(filePath) : String(tr("Tool: ", "Инструмент: ")) + tool;
+  if (isGlob) {
+    String d = pattern.length() ? String(tr("Pattern: ", "Шаблон: ")) + pattern
+                                : (filePath.length() ? fileDetail(filePath.c_str()) : String(tr("Finding files", "Ищу файлы")));
     agentSetState(agent, AgentState::Reading, shorten(d), false);
     return;
   }
 
-  String d = strlen(tool) ? String(tr("Tool: ", "Инструмент: ")) + tool : tr("Using tool", "Работаю с инструментом");
+  if (isGrep) {
+    String d = pattern.length() ? String(tr("Search: ", "Ищу: ")) + pattern : tr("Searching project", "Ищу по проекту");
+    agentSetState(agent, AgentState::Reading, shorten(d), false);
+    return;
+  }
+
+  if (isEdit) {
+    agentSetState(agent, AgentState::Typing,
+                  filePath.length() ? shorten(fileDetail(filePath.c_str())) : tr("Editing file", "Изменяю файл"), false);
+    return;
+  }
+
+  if (toolLooksLikeRead(lower)) {
+    String d = filePath.length() ? fileDetail(filePath.c_str())
+                                 : (pattern.length() ? String(tr("Search: ", "Ищу: ")) + pattern
+                                                     : String(tr("Tool: ", "Инструмент: ")) + tool);
+    agentSetState(agent, AgentState::Reading, shorten(d), false);
+    return;
+  }
+
+  String d = tool.length() ? String(tr("Tool: ", "Инструмент: ")) + tool : tr("Using tool", "Работаю с инструментом");
   agentSetState(agent, AgentState::Thinking, shorten(d), false);
+}
+
+// Cursor and Cline use their own lifecycle vocabularies. Translate them into
+// the canonical event names handled below; return an empty string for events
+// the display does not care about (they are acknowledged and ignored).
+static String canonicalEvent(AgentId agent, JsonDocument& doc, String* source) {
+  String event = doc["hook_event_name"] | "";
+  if (!event.length()) event = doc["hookName"] | "";
+  if (!event.length()) return String();
+
+  if (dialectOf(agent) == HookDialect::Cursor) {
+    if (event == "sessionStart") { *source = "startup"; return "SessionStart"; }
+    if (event == "sessionEnd") return "SessionEnd";
+    if (event == "beforeSubmitPrompt") return "UserPromptSubmit";
+    if (event == "preToolUse") return "PreToolUse";
+    if (event == "postToolUse") return "PostToolUse";
+    if (event == "postToolUseFailure") return "PostToolUseFailure";
+    if (event == "subagentStart") return "SubagentStart";
+    if (event == "subagentStop") return "SubagentStop";
+    if (event == "preCompact") return "PreCompact";
+    if (event == "stop") {
+      const String status = doc["status"] | "";
+      if (status == "aborted") return "Interrupt";
+      if (status == "error") return "StopFailure";
+      return "Stop";
+    }
+    return String();  // beforeShellExecution, afterFileEdit, ...
+  }
+
+  if (dialectOf(agent) == HookDialect::Cline) {
+    if (event == "TaskStart") { *source = "startup"; return "SessionStart"; }
+    if (event == "TaskResume") { *source = "resume"; return "SessionStart"; }
+    if (event == "TaskCancel") return "Interrupt";
+    if (event == "TaskComplete") return "Stop";
+    if (event == "UserPromptSubmit") return "UserPromptSubmit";
+    if (event == "PreToolUse") return "PreToolUse";
+    if (event == "PostToolUse") {
+      const bool success = doc["postToolUse"]["success"] | true;
+      return success ? "PostToolUse" : "PostToolUseFailure";
+    }
+    if (event == "PreCompact") return "PreCompact";
+    return String();  // PreCompact/TaskComplete while "coming soon"
+  }
+
+  return event;
 }
 
 void agentHandleHookJson(AgentId agent, const String& body) {
@@ -317,13 +427,20 @@ void agentHandleHookJson(AgentId agent, const String& body) {
     return;
   }
 
-  const char* event = doc["hook_event_name"] | "";
-  const char* tool = doc["tool_name"] | "";
-  const char* source = doc["source"] | "";
+  String source(doc["source"] | "");
+  const String eventName = canonicalEvent(agent, doc, &source);
+  const String tool = toolNameOf(doc);
+  const char* event = eventName.c_str();
+  const char* sourceName = source.c_str();
   const char* reason = doc["reason"] | "";
   const char* permissionMode = doc["permission_mode"] | "";
 
-  logInfo(agentKey(agent), "hook=%s tool=%s", event, tool);
+  if (!eventName.length()) {
+    logInfo(agentKey(agent), "hook event ignored");
+    return;
+  }
+
+  logInfo(agentKey(agent), "hook=%s tool=%s", event, tool.c_str());
 
   AgentContext& current = ctx(agent);
 
@@ -369,8 +486,8 @@ void agentHandleHookJson(AgentId agent, const String& body) {
 
   if (!strcmp(event, "SessionStart")) {
     agentSetState(agent,
-                  !strcmp(source, "startup") ? AgentState::Welcome : AgentState::Idle,
-                  !strcmp(source, "startup") ? String(agentName(agent)) + tr(" connected", " подключён") : tr("Session resumed", "Сеанс продолжен"));
+                  !strcmp(sourceName, "startup") ? AgentState::Welcome : AgentState::Idle,
+                  !strcmp(sourceName, "startup") ? String(agentName(agent)) + tr(" connected", " подключён") : tr("Session resumed", "Сеанс продолжен"));
     return;
   }
 
@@ -388,7 +505,7 @@ void agentHandleHookJson(AgentId agent, const String& body) {
   }
 
   if (!strcmp(event, "PreToolUse")) {
-    handlePreToolUse(agent, doc, tool);
+    handlePreToolUse(agent, toolInputOf(doc), tool);
     return;
   }
 
@@ -441,13 +558,13 @@ void agentHandleHookJson(AgentId agent, const String& body) {
       // unchanged for a grace period and alert only if Codex remains quiet.
       current.permissionPending = true;
       current.permissionRequestedAt = millis();
-      current.permissionTool = strlen(tool) ? String(tool) : String();
+      current.permissionTool = tool;
       logInfo("codex", "permission pending; grace=%lu ms tool=%s",
-              (unsigned long)CODEX_PERMISSION_GRACE_MS, tool);
+              (unsigned long)CODEX_PERMISSION_GRACE_MS, tool.c_str());
       return;
     }
 
-    String d = strlen(tool) ? String(tr("Approval needed: ", "Нужно подтвердить: ")) + tool :
+    String d = tool.length() ? String(tr("Approval needed: ", "Нужно подтвердить: ")) + tool :
                String(tr("Check ", "Проверьте ")) + agentName(agent);
     agentSetState(agent, AgentState::Attention, shorten(d));
     return;
@@ -488,7 +605,7 @@ void agentHandleHookJson(AgentId agent, const String& body) {
       logInfo(agentKey(agent), "notification ignored: %s", notificationType);
       return;
     }
-    String d = strlen(tool) ? String(tr("Approval needed: ", "Нужно подтвердить: ")) + tool :
+    String d = tool.length() ? String(tr("Approval needed: ", "Нужно подтвердить: ")) + tool :
                String(tr("Check ", "Проверьте ")) + agentName(agent);
     agentSetState(agent, AgentState::Attention, shorten(d));
     return;
@@ -501,7 +618,7 @@ void agentHandleHookJson(AgentId agent, const String& body) {
       current.permissionAttentionPending = false;
       current.permissionRequestedAt = 0;
       current.permissionTool = "";
-    } else if (agent == AgentId::Claude) {
+    } else {
       agentSetState(agent, AgentState::Abort, tr("Permission denied", "Доступ не разрешён"));
     }
     return;
@@ -514,8 +631,10 @@ void agentHandleHookJson(AgentId agent, const String& body) {
 
   if (!strcmp(event, "PostToolUseFailure")) {
     const char* errorText = doc["error"] | "";
+    if (!strlen(errorText)) errorText = doc["error_message"] | "";
+    if (!strlen(errorText)) errorText = doc["postToolUse"]["result"] | "";
     String d;
-    if (strlen(tool)) d = String(tr("Failure: ", "Сбой: ")) + tool;
+    if (tool.length()) d = String(tr("Failure: ", "Сбой: ")) + tool;
     else if (strlen(errorText)) d = String(errorText);
     else d = tr("Something went wrong", "Что-то пошло не так");
     agentSetState(agent, AgentState::Error, shorten(d));

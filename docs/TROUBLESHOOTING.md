@@ -59,6 +59,19 @@ The URL is `http://...`, not `http\://...`.
 
 Make sure the PC and ESP32 are on the same LAN/VLAN and client isolation is not enabled on the Wi-Fi access point.
 
+## Provider hooks do not arrive
+
+- Confirm the provider is enabled: `curl http://DEVICE_IP/api/settings` (or the
+  checkboxes at `/`). Disabled providers return
+  `{"ok":true,"ignored":"provider disabled"}`.
+- Send a test payload directly:
+  `curl -X POST http://DEVICE_IP/hook/cursor -H 'Content-Type: application/json' -d '{"hook_event_name":"stop","status":"completed"}'`
+- If the direct call works, the forwarder cannot reach the device. Check
+  `AGENTFACE_URL`, use the IP instead of `agentface32.local`, and look at
+  `curl http://DEVICE_IP/logs` for lines starting with the provider key.
+- Each guide has provider-specific notes: [opencode](OPENCODE.md),
+  [Cline](CLINE.md), [Cursor](CURSOR.md).
+
 ## Display flickers
 
 The M5Stack and TFT backends draw into an off-screen sprite/canvas and push a complete frame. If you add another color display, do not clear the physical LCD and redraw it element-by-element every frame; use a framebuffer/sprite when RAM permits.

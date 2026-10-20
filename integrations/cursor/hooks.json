@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "sessionEnd": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "beforeSubmitPrompt": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "preToolUse": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "postToolUse": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "postToolUseFailure": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "subagentStart": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "subagentStop": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "preCompact": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ],
+    "stop": [
+      { "command": "python3 .cursor/hooks/agentface32.py", "timeout": 3 }
+    ]
+  }
+}

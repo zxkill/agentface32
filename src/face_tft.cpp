@@ -107,7 +107,9 @@ static uint16_t accent(AgentState s) {
   switch(s){case AgentState::Attention:return C_YELLOW;case AgentState::Done:return C_GREEN;case AgentState::Error:case AgentState::Abort:return C_RED;case AgentState::Reading:return C_CYAN;case AgentState::Running:return C_PURPLE;default:return C_TEXT;}
 }
 
-static uint16_t brand(AgentId a){return a==AgentId::Codex?C_GREEN:C_CYAN;}
+static uint16_t brand(AgentId a){
+  switch(a){case AgentId::Codex:return C_GREEN;case AgentId::OpenCode:return C_CYAN;case AgentId::Cline:return C_YELLOW;case AgentId::Cursor:return C_PURPLE;default:return C_CYAN;}
+}
 
 static void drawFace(AgentState s, uint32_t now, int top, int bottom) {
   int w=g_sprite.width(); int h=bottom-top; int cy=top+h/2-5;

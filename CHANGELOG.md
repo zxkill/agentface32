@@ -2,6 +2,24 @@
 
 All notable public changes are documented here.
 
+## [0.8.0] - 2026-10-20
+
+### More providers
+
+- Added **opencode**, **Cline** and **Cursor** as independent providers next to
+  Claude Code and Codex (`/hook/opencode`, `/hook/cline`, `/hook/cursor`).
+- Per-provider payload normalization: Cursor camelCase hooks, Cline
+  `hookName`/`preToolUse.parameters`, and canonical events from the bundled
+  opencode plugin.
+- Cross-provider tool-name mapping (`Shell`, `execute_command`, `bash`, …) for
+  the same reading/editing/running states.
+- All-enabled view now lays out a card per provider; brand colors for the new
+  agents.
+- Integrations: `integrations/opencode` plugin, `integrations/cline`
+  installer, `integrations/cursor` hooks + forwarder.
+- Documentation: `docs/OPENCODE.md`, `docs/CLINE.md`, `docs/CURSOR.md`,
+  updated API/architecture/README in both languages.
+
 ## [0.6.0] - 2026-10-04
 
 ### First public release

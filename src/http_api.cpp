@@ -424,9 +424,13 @@ void httpApiBegin() {
   });
   server.on("/help", HTTP_GET, []() {
     addCors();
-    server.send(200, "text/plain",
-      AGENT_COMPANION_NAME " v" AGENT_COMPANION_VERSION "\n\n"
-      "POST /hook/<provider>      lifecycle hook (claude, codex)\n"
+    String providers;
+    for (uint8_t i = 0; i < AGENT_COUNT; ++i) {
+      if (providers.length()) providers += ", ";
+      providers += agentKey(agentAt(i));
+    }
+    String text = String(AGENT_COMPANION_NAME " v" AGENT_COMPANION_VERSION "\n\n") +
+      "POST /hook/<provider>      lifecycle hook (" + providers + ")\n"
       "POST /hook                 alias for Claude\n"
       "POST /anim?name=reading&agent=<provider>\n"
       "POST /view?mode=<provider>|both|auto\n"
@@ -437,7 +441,8 @@ void httpApiBegin() {
       "POST /update               firmware upload (multipart, field 'firmware', ?md5=)\n"
       "GET  /logs?since=N         log ring buffer (X-Log-Next header)\n"
       "GET  /api/crash, POST /api/crash/clear, GET /coredump\n"
-      "POST /api/reboot\n");
+      "POST /api/reboot\n";
+    server.send(200, "text/plain", text);
   });
   server.on("/health", HTTP_GET, handleHealth);
   server.on("/state", HTTP_GET, []() {

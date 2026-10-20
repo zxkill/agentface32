@@ -16,7 +16,7 @@ curl -u admin:PASSWORD http://DEVICE_IP/logs
 
 ## `GET /health`
 
-Returns firmware/hardware/network diagnostics plus both agent contexts.
+Returns firmware/hardware/network diagnostics plus every provider context.
 
 ```bash
 curl http://DEVICE_IP/health
@@ -29,13 +29,13 @@ Useful fields include:
 - previous reset reason and boot counter
 - current view mode
 - per-provider state, detail, timer and tool counts (`claude_*`, `codex_*`,
-  including `<provider>_enabled`)
+  `opencode_*`, `cline_*`, `cursor_*`, including `<provider>_enabled`)
 - `app_partition`, `ota_pending_verify`, `ota_rolled_back`, `build`
 - `coredump` (a crash dump is stored), `log_bytes`, `setup_active`
 
 ## `GET /state`
 
-Smaller runtime snapshot of both agent contexts and the focused view.
+Smaller runtime snapshot of all provider contexts and the focused view.
 
 ## `POST /hook/claude`
 
@@ -53,6 +53,23 @@ curl -X POST http://DEVICE_IP/hook/claude \
 
 Accepts a Codex lifecycle JSON payload.
 
+## `POST /hook/opencode`, `/hook/cline`, `/hook/cursor`
+
+Each provider has its own endpoint and payload dialect:
+
+| Provider | Event field | Notes |
+| --- | --- | --- |
+| `claude` | `hook_event_name` (PascalCase) | native HTTP hooks |
+| `codex` | `hook_event_name` (PascalCase) | permission grace handling |
+| `opencode` | `hook_event_name` | sent by `integrations/opencode/agentface32.js` |
+| `cline` | `hookName` | `preToolUse.parameters`, `postToolUse.success` |
+| `cursor` | `hook_event_name` (camelCase) | `stop.status` maps to done/abort/error |
+
+The firmware normalizes provider-specific event and tool names into the same
+internal states. Unknown events are acknowledged and ignored. Tool parameters
+are read from `tool_input`, `preToolUse.parameters` (Cline) or `args`, so a
+custom integration can send either shape.
+
 Hooks for a provider that is disabled in settings return
 `{"ok":true,"ignored":"provider disabled"}` and do not change the display.
 
@@ -62,7 +79,7 @@ Manually set an agent state.
 
 Parameters:
 
-- `agent`: `claude` (default) or `codex`
+- `agent`: `claude` (default), `codex`, `opencode`, `cline` or `cursor`
 - `name`: `idle`, `welcome`, `reading`, `thinking`, `typing`, `editing`, `running`, `attention`, `done`, `ring`, `error`, `abort`, `cancelled`, `sleep`
 
 ```bash
@@ -81,13 +98,14 @@ Switch display mode:
 
 ```bash
 curl -X POST "http://DEVICE_IP/view?mode=claude"
-curl -X POST "http://DEVICE_IP/view?mode=codex"
+curl -X POST "http://DEVICE_IP/view?mode=cursor"
 curl -X POST "http://DEVICE_IP/view?mode=both"
 curl -X POST "http://DEVICE_IP/view?mode=auto"
 ```
 
 `GET /view` returns the current mode. Only enabled providers can be selected;
-`both` needs at least two enabled providers.
+`both` (alias `all`) needs at least two enabled providers and shows a compact
+card for every enabled agent.
 
 ## Settings: `GET/POST /api/settings`
 
@@ -102,7 +120,7 @@ fields; omitted fields are unchanged:
   "language": "ru",
   "sound": true,
   "brightness": 60,
-  "providers": {"claude": true, "codex": false},
+  "providers": {"claude": true, "codex": false, "opencode": true, "cline": true, "cursor": true},
   "admin_password": ""
 }
 ```
@@ -183,6 +201,16 @@ For a custom integration, the smallest useful payload is:
     "file_path": "src/main.cpp"
   }
 }
+```
+
+Provider-native shapes are also accepted without translation:
+
+```json
+// Cursor
+{"hook_event_name": "preToolUse", "tool_name": "Shell", "tool_input": {"command": "npm test"}}
+
+// Cline
+{"hookName": "PreToolUse", "preToolUse": {"toolName": "execute_command", "parameters": {"command": "npm test"}}}
 ```
 
 Or skip lifecycle semantics entirely and drive `/anim` directly.

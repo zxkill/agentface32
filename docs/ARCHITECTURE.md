@@ -6,15 +6,23 @@ AgentFace32 is intentionally host-light. There is no background daemon between t
 flowchart LR
     CC[Claude Code] -->|HTTP hook JSON| H1[/hook/claude]
     CX[Codex] -->|command hook + curl| H2[/hook/codex]
+    OC[opencode] -->|plugin| H3[/hook/opencode]
+    CL[Cline] -->|hook scripts| H4[/hook/cline]
+    CU[Cursor] -->|hook scripts| H5[/hook/cursor]
     CUSTOM[Other tool/script] -->|REST| REST[/anim]
-    H1 --> PARSER[Agent event parser]
+    H1 --> PARSER[Provider normalizer]
     H2 --> PARSER
+    H3 --> PARSER
+    H4 --> PARSER
+    H5 --> PARSER
     REST --> STATE[Agent contexts]
     PARSER --> STATE
     STATE --> C1[Claude context]
     STATE --> C2[Codex context]
+    STATE --> CN[OpenCode / Cline / Cursor contexts]
     C1 --> UI[Display backend]
     C2 --> UI
+    CN --> UI
     UI --> M5[M5GFX]
     UI --> OLED[U8g2]
     UI --> TFT[TFT_eSPI]
@@ -23,7 +31,7 @@ flowchart LR
 
 ## Core modules
 
-- `agent.cpp` — provider registry (`claude`, `codex`), hook normalization, task timers, tool counts, permission grace logic.
+- `agent.cpp` — provider registry (`claude`, `codex`, `opencode`, `cline`, `cursor`), per-provider hook normalization (dialects), task timers, tool counts, permission grace logic.
 - `state.cpp` / `translations.cpp` — stable machine states and English/Russian labels.
 - `settings.cpp` — NVS-backed runtime settings: Wi-Fi, hostname, language, sound, brightness, enabled providers, admin password. `config.h` values are only defaults.
 - `wifi_manager.cpp` — station connection, setup access point + captive DNS, fallback AP, mDNS.
@@ -43,9 +51,10 @@ flowchart LR
 ## Adding a provider
 
 1. Add an `AgentId` value and bump `AGENT_COUNT` in `agent.h`.
-2. Add `{key, name}` to `kProviders` in `agent.cpp`. `/hook/<key>`, settings, the menu, the web page and the All view pick it up.
-3. If its hook payload differs from Claude/Codex, normalize it in `agentHandleHookJson`.
+2. Add `{key, name, dialect}` to `kProviders` in `agent.cpp`. `/hook/<key>`, settings, the menu, the web page and the All view pick it up.
+3. If its hook payload differs from Claude/Codex, extend `canonicalEvent()` with the provider's event names and, if needed, its tool-name aliases in `handlePreToolUse()`.
 4. Optionally give it a brand color in each `face_*.cpp`.
+5. Add an integration under `integrations/<provider>/` and a setup guide in `docs/`.
 
 ## Independent agent contexts
 

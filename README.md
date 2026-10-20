@@ -1,12 +1,15 @@
 # AgentFace32
 
-**A small ESP32 desk display that gives Claude Code and Codex a face.**
+**A small ESP32 desk display that gives your coding agents a face.**
 
 <p align="center">
   <img alt="ESP32" src="https://img.shields.io/badge/ESP32-supported-E7352C?logo=espressif&logoColor=white">
   <img alt="PlatformIO" src="https://img.shields.io/badge/PlatformIO-ready-F5822A?logo=platformio&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-hooks-D97757">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-hooks-000000?logo=openai&logoColor=white">
+  <img alt="opencode" src="https://img.shields.io/badge/opencode-plugin-111111">
+  <img alt="Cline" src="https://img.shields.io/badge/Cline-hooks-5B6EF5">
+  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-hooks-000000">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
@@ -19,7 +22,7 @@
   <a href="docs/images/agentface32-demo.mp4">Watch the full-quality MP4 demo</a>
 </p>
 
-AgentFace32 sits on your desk and reacts to what your coding agents are doing. It reads lifecycle hooks from **Claude Code** and **Codex**, then turns them into an expressive face, a status line, the current file or command, task time, tool count, alerts, and optional sound.
+AgentFace32 sits on your desk and reacts to what your coding agents are doing. It reads lifecycle hooks from **Claude Code**, **Codex**, **opencode**, **Cline** and **Cursor**, then turns them into an expressive face, a status line, the current file or command, task time, tool count, alerts, and optional sound.
 
 It is deliberately simple: **the AI does not run on the ESP32**. Your agent stays on your computer. The device receives small JSON events over your local network and renders them. No cloud service, account, API key, database, or companion daemon is required.
 
@@ -33,15 +36,15 @@ AgentFace32 gives that background activity a physical presence. A glance at the 
 
 ## Features
 
-- **Claude Code + Codex at the same time.** Each agent keeps its own state, task timer, tool count, last result and current detail.
-- **Four views:** Claude, Codex, both agents, or **AUTO** to follow whichever agent was active most recently.
+- **Five providers side by side.** Claude Code, Codex, opencode, Cline and Cursor each keep their own state, task timer, tool count, last result and current detail.
+- **Provider views:** any single agent, a compact card view of everything enabled, or **AUTO** to follow whichever agent was active most recently.
 - **Expressive states:** idle, online, reading, thinking, editing, running commands, needs attention, done, error, cancelled and sleep.
 - **Useful details:** file paths, grep/search patterns, URLs, shell commands, task duration and number of tool calls.
 - **Background alerts:** if the hidden agent needs attention or finishes, the active screen can show it without losing the other agent's state.
 - **Smarter Codex permissions:** `PermissionRequest` waits 10 seconds before alerting. Auto-approved actions normally continue before that, preventing noisy false alarms.
 - **No-config Wi-Fi setup.** On first boot the device opens its own access point with a captive portal; pick your network in the browser and it reboots onto it.
 - **Settings menu** on the device (hold **A**) and in the browser (`http://DEVICE_IP/`): providers, brightness, sound, language, Wi-Fi.
-- **Choose providers.** Show only Claude, only Codex, or both; the provider registry is ready for more.
+- **Choose providers.** Enable only the agents you actually use; disabled providers disappear from the views and their hooks are ignored. The registry is one row per provider, ready for the next tool.
 - **Wi-Fi firmware updates** with automatic rollback if the new image crashes: `pio run -e m5stack-basic -t ota`.
 - **Logs and crash dumps over Wi-Fi.** A log ring buffer survives crashes and restarts; core dumps can be decoded from your PC.
 - **English and Russian UI**, switchable at runtime.
@@ -111,8 +114,13 @@ Optional: credentials in `include/config.local.h` (copied from `config.example.h
 
 - **Claude Code:** [setup guide](docs/CLAUDE_CODE.md) · [ready-to-copy settings](integrations/claude-code/settings.example.json)
 - **Codex:** [setup guide](docs/CODEX.md) · [ready-to-copy hooks](integrations/codex/hooks.example.json)
+- **opencode:** [setup guide](docs/OPENCODE.md) · [plugin](integrations/opencode/agentface32.js)
+- **Cline:** [setup guide](docs/CLINE.md) · [installer](integrations/cline/install.sh)
+- **Cursor:** [setup guide](docs/CURSOR.md) · [ready-to-copy hooks](integrations/cursor/hooks.json)
 
-Both agents can report to the same ESP32 simultaneously.
+All enabled providers can report to the same ESP32 simultaneously. opencode,
+Cline and Cursor need one small forwarder script/plugin because their hooks are
+local processes rather than direct HTTP hooks.
 
 ## What the screen shows
 
@@ -128,13 +136,13 @@ Claude                         2:17
          src/auth/service.py
 ```
 
-The **Both** view keeps Claude and Codex visible together. **AUTO** follows whichever agent most recently produced a real event.
+The **Both** view (also called **All**) shows a compact card for every enabled provider. **AUTO** follows whichever agent most recently produced a real event.
 
 On M5Stack Basic:
 
 - **A** — sound on/off
 - **B** — cycle demo expressions
-- **C** — next enabled provider → Both
+- **C** — next enabled provider → All
 - **hold C** — toggle AUTO
 - **hold A** — settings menu (inside: **A** next, **B/C** select)
 
@@ -156,15 +164,22 @@ python tools/agentface.py crash --env m5stack-basic         # decode the last cr
 flowchart LR
     C[Claude Code] -- lifecycle hooks --> HC[POST /hook/claude]
     X[Codex] -- lifecycle hooks --> HX[POST /hook/codex]
+    O[opencode] -- plugin --> HO[POST /hook/opencode]
+    L[Cline] -- hook scripts --> HL[POST /hook/cline]
+    U[Cursor] -- hook scripts --> HU[POST /hook/cursor]
     HC --> E[ESP32 / AgentFace32]
     HX --> E
-    E --> S1[Claude context]
-    E --> S2[Codex context]
-    S1 --> UI[Face + status + dashboard]
-    S2 --> UI
+    HO --> E
+    HL --> E
+    HU --> E
+    E --> S[Independent provider contexts]
+    S --> UI[Face + status + dashboard]
 ```
 
-Claude Code can send supported lifecycle events directly as HTTP hooks. Codex command hooks pipe their JSON input to `curl`, which forwards it to the ESP32. The firmware normalizes both event streams into the same internal states.
+Claude Code sends supported lifecycle events directly as HTTP hooks. Codex
+command hooks pipe their JSON input to `curl`. opencode uses a small plugin;
+Cline and Cursor run forwarder scripts. The firmware normalizes each provider's
+event and tool vocabulary into the same internal states.
 
 ## REST API
 
@@ -173,7 +188,7 @@ The hooks are just HTTP. You can drive the device yourself:
 ```bash
 curl -X POST "http://DEVICE_IP/anim?agent=claude&name=thinking"
 curl -X POST "http://DEVICE_IP/anim?agent=codex&name=done"
-curl -X POST "http://DEVICE_IP/view?mode=both"
+curl -X POST "http://DEVICE_IP/view?mode=both"   # all enabled agents
 curl "http://DEVICE_IP/state"
 ```
 
@@ -182,9 +197,12 @@ First-class routes:
 ```text
 POST /hook/claude
 POST /hook/codex
+POST /hook/opencode
+POST /hook/cline
+POST /hook/cursor
 POST /hook                 # Claude-compatible alias
 POST /anim?agent=...&name=...
-POST /view?mode=claude|codex|both|auto
+POST /view?mode=<provider>|both|auto
 GET  /health
 GET  /state
 ```
@@ -208,6 +226,9 @@ include/                 configuration and interfaces
 src/                     agent logic + display/audio backends
 integrations/claude-code ready hook settings
 integrations/codex       ready hook settings
+integrations/opencode    opencode plugin
+integrations/cline       hook installer
+integrations/cursor      ready hook settings + forwarder
 docs/                    hardware, API, integrations, troubleshooting
 tools/                   API/demo scripts
 .github/workflows/       build matrix for all hardware profiles
@@ -240,6 +261,9 @@ CI runs the same matrix on GitHub.
 - [Hardware & wiring](docs/HARDWARE.md)
 - [Claude Code setup](docs/CLAUDE_CODE.md)
 - [Codex setup](docs/CODEX.md)
+- [opencode setup](docs/OPENCODE.md)
+- [Cline setup](docs/CLINE.md)
+- [Cursor setup](docs/CURSOR.md)
 - [HTTP API](docs/API.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
@@ -261,4 +285,4 @@ Built with [M5Unified](https://github.com/m5stack/M5Unified), [U8g2](https://git
 
 MIT — see [LICENSE](LICENSE).
 
-Claude is a trademark of Anthropic. Codex and OpenAI are trademarks of OpenAI. M5Stack, ESP32, LILYGO and other product names belong to their respective owners. AgentFace32 is an independent community project and is not affiliated with or endorsed by those companies.
+Claude is a trademark of Anthropic. Codex and OpenAI are trademarks of OpenAI. Cursor, Cline and opencode belong to their respective owners. M5Stack, ESP32, LILYGO and other product names belong to their respective owners. AgentFace32 is an independent community project and is not affiliated with or endorsed by those companies.

@@ -1,0 +1,83 @@
+# opencode setup
+
+opencode has a plugin API (not shell hooks). The bundled plugin subscribes to
+session, prompt and tool events and forwards them to `/hook/opencode`.
+
+## 1. Install the plugin
+
+Per project:
+
+```bash
+mkdir -p .opencode/plugins
+cp integrations/opencode/agentface32.js .opencode/plugins/
+```
+
+Globally for all projects:
+
+```bash
+mkdir -p ~/.config/opencode/plugins
+cp integrations/opencode/agentface32.js ~/.config/opencode/plugins/
+```
+
+Alternatively publish/host the file and list it in `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./integrations/opencode/agentface32.js"]
+}
+```
+
+Restart opencode after adding the plugin.
+
+## 2. Point the plugin at the device
+
+The default is `http://agentface32.local`. Override it in the environment that
+starts opencode:
+
+```bash
+export AGENTFACE_URL=http://192.168.1.50
+opencode
+```
+
+The plugin sends requests fire-and-forget with a 1.5 s timeout. If the device
+is offline, opencode is not delayed or interrupted.
+
+## 3. Verify
+
+```bash
+curl http://DEVICE_IP/health   # opencode_seen / opencode_state
+curl http://DEVICE_IP/logs     # lines starting with "opencode"
+```
+
+Enable **OpenCode** on the device settings page (`/`) first; disabled
+providers acknowledge and ignore hooks.
+
+## Event mapping
+
+| opencode event / hook | AgentFace32 state |
+| --- | --- |
+| `session.created` | online / welcome (`SubagentStart` for child sessions) |
+| `session.deleted` | sleep (`SubagentStop` for child sessions) |
+| `chat.message` | new task |
+| `tool.execute.before` | reading / editing / running, depending on the tool |
+| `tool.execute.after` | processing result |
+| `permission.asked` | needs attention |
+| `permission.replied` | permission granted / denied |
+| `session.idle` | done |
+| `session.error` | error |
+| `session.compacted` | compacting context |
+
+The plugin sends canonical PascalCase event names (`hook_event_name`), so the
+firmware treats opencode like its other providers while still accepting
+opencode's lowercase tool ids (`bash`, `read`, `edit`, `grep`, `webfetch`).
+
+## Troubleshooting
+
+- **No events.** Make sure the file ends in `.js` or `.ts` inside a `plugins/`
+  directory and restart opencode. Check the opencode log for plugin load
+  errors.
+- **Device unreachable by name.** Use an IP address in `AGENTFACE_URL`; some
+  systems do not resolve `.local` names inside sandboxed processes.
+- **Events arrive but the face does not change.** Confirm the provider is
+  enabled and look at `GET /logs` on the device.
