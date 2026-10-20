@@ -1,0 +1,34 @@
+{
+  "version": "0.9.0",
+  "release": "https://github.com/zxkill/agentface32/releases/tag/v0.9.0",
+  "assets": {
+    "esp32dev-sh1106": {
+      "file": "agentface32-v0.9.0-esp32dev-sh1106-ota.bin",
+      "size": 1141952
+    },
+    "esp32dev-ssd1306-max98357": {
+      "file": "agentface32-v0.9.0-esp32dev-ssd1306-max98357-ota.bin",
+      "size": 1151280
+    },
+    "esp32dev-ssd1306": {
+      "file": "agentface32-v0.9.0-esp32dev-ssd1306-ota.bin",
+      "size": 1141952
+    },
+    "esp32dev-st7789": {
+      "file": "agentface32-v0.9.0-esp32dev-st7789-ota.bin",
+      "size": 1210640
+    },
+    "esp32s3-ssd1306": {
+      "file": "agentface32-v0.9.0-esp32s3-ssd1306-ota.bin",
+      "size": 1086704
+    },
+    "lilygo-t-display": {
+      "file": "agentface32-v0.9.0-lilygo-t-display-ota.bin",
+      "size": 1209344
+    },
+    "m5stack-basic": {
+      "file": "agentface32-v0.9.0-m5stack-basic-ota.bin",
+      "size": 1621072
+    }
+  }
+}
