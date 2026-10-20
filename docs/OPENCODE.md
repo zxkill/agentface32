@@ -81,13 +81,21 @@ providers acknowledge and ignore hooks.
 | `session.execution.succeeded` | done |
 | `session.execution.failed` | error |
 | `session.execution.interrupted` | cancelled |
+| `session.step.ended` with `finish: "stop"` | done (per-turn fallback) |
 | `session.compaction.started` / `.ended` | compacting context |
 
 opencode V2 does **not** emit `session.idle` (it exists in the schema but is
-never published). Turn completion is the `session.execution.*` terminal event,
-so the plugin reports **done** when a root session's execution succeeds, fails
-or is interrupted. Subagent sessions are recognised by `session.created` /
-`parentID`, so their completion does not end the task early.
+never published). Turn completion is normally the `session.execution.*`
+terminal event, so the plugin reports **done** when a root session's execution
+succeeds, fails or is interrupted. Subagent sessions are recognised by
+`session.created` / `parentID`, so their completion does not end the task
+early.
+
+Some clients (T3 Code) keep one long-lived execution open across user turns,
+so `session.execution.succeeded` may not arrive when a single answer is ready.
+The plugin therefore also treats a final `session.step.ended` with
+`finish: "stop"` as **done**. This is a per-turn signal and clears the display
+even when the surrounding session stays open.
 
 V1 uses `chat.message` (new task), `session.idle` (done), `session.error` and
 `session.compacted`; the same plugin maps those as well.

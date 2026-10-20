@@ -59,6 +59,13 @@ function shortError(value) {
 // sessions so a subagent finishing does not mark the whole task as done.
 function createTracker() {
   const childSessions = new Set()
+  // Root sessions stay root even if a later event would classify them as a
+  // child (for example after a plugin reload lost the session.created event).
+  const rootSessions = new Set()
+
+  function isRoot(sessionID, isChild) {
+    return !isChild || Boolean(sessionID && rootSessions.has(sessionID))
+  }
 
   function handleEvent(event) {
     if (!event) return
@@ -73,29 +80,45 @@ function createTracker() {
     switch (event.type) {
       case "session.created": {
         if (parentID && sessionID) childSessions.add(sessionID)
+        if (!parentID && sessionID) rootSessions.add(sessionID)
         send({ hook_event_name: parentID ? "SubagentStart" : "SessionStart", source: "startup" })
         break
       }
       case "session.deleted": {
-        if (sessionID) childSessions.delete(sessionID)
+        if (sessionID) {
+          childSessions.delete(sessionID)
+          rootSessions.delete(sessionID)
+        }
         send({ hook_event_name: isChild ? "SubagentStop" : "SessionEnd" })
         break
       }
       case "session.execution.started":
         // Child sessions start while the main task is already running, so
         // only a root session starts a new task on the display.
+        if (!isChild && sessionID) rootSessions.add(sessionID)
         if (!isChild) send({ hook_event_name: "UserPromptSubmit" })
         break
       case "session.execution.succeeded":
-        if (!isChild) send({ hook_event_name: "Stop" })
+        if (isRoot(sessionID, isChild)) send({ hook_event_name: "Stop" })
         break
+      case "session.step.ended": {
+        // Some clients (T3 Code) keep a long-lived session execution open
+        // between user turns, so execution.succeeded may not arrive when a
+        // single task is finished. A final assistant step with finish=stop is
+        // the per-turn completion signal.
+        const finish = String(data.finish || "").toLowerCase()
+        if ((finish === "stop" || finish === "end_turn") && isRoot(sessionID, isChild)) {
+          send({ hook_event_name: "Stop" })
+        }
+        break
+      }
       case "session.execution.failed":
-        if (!isChild) send({ hook_event_name: "StopFailure", error: shortError(data.error) })
+        if (isRoot(sessionID, isChild)) send({ hook_event_name: "StopFailure", error: shortError(data.error) })
         break
       case "session.execution.interrupted":
         // "superseded" means a newer prompt replaced this execution; the next
         // execution.started follows immediately, so do not flash "cancelled".
-        if (!isChild && data.reason !== "superseded") {
+        if (isRoot(sessionID, isChild) && data.reason !== "superseded") {
           send({ hook_event_name: "Interrupt", reason: toolName(data.reason) })
         }
         break
@@ -136,7 +159,10 @@ function createTracker() {
   return {
     handleEvent,
     handlePrompt(event) {
-      if (event && event.sessionID && childSessions.has(event.sessionID)) return
+      if (event && event.sessionID) {
+        if (childSessions.has(event.sessionID)) return
+        rootSessions.add(event.sessionID)
+      }
       send({ hook_event_name: "UserPromptSubmit" })
     },
     handleToolBefore(event) {

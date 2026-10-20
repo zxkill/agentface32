@@ -21,6 +21,9 @@ All notable public changes are documented here.
 - `tools/codex_trust_hooks.py` re-approves edited Codex hooks for app-server
   clients (T3 Code, IDE extensions), which otherwise skip `modified` hooks
   silently. Documented in `docs/CODEX.md` and troubleshooting.
+- The opencode plugin also completes a task on `session.step.ended` with
+  `finish: "stop"`, because T3 Code can keep one execution open across turns
+  and never send `session.execution.succeeded` per answer.
 - Documentation: `docs/OPENCODE.md`, `docs/CLINE.md`, `docs/CURSOR.md`,
   updated API/architecture/README in both languages.
 
