@@ -4,31 +4,31 @@
   "assets": {
     "esp32dev-sh1106": {
       "file": "agentface32-v0.9.1-esp32dev-sh1106-ota.bin",
-      "size": 1142640
+      "size": 1142704
     },
     "esp32dev-ssd1306-max98357": {
       "file": "agentface32-v0.9.1-esp32dev-ssd1306-max98357-ota.bin",
-      "size": 1151904
+      "size": 1151984
     },
     "esp32dev-ssd1306": {
       "file": "agentface32-v0.9.1-esp32dev-ssd1306-ota.bin",
-      "size": 1142640
+      "size": 1142704
     },
     "esp32dev-st7789": {
       "file": "agentface32-v0.9.1-esp32dev-st7789-ota.bin",
-      "size": 1211264
+      "size": 1211328
     },
     "esp32s3-ssd1306": {
       "file": "agentface32-v0.9.1-esp32s3-ssd1306-ota.bin",
-      "size": 1087392
+      "size": 1087456
     },
     "lilygo-t-display": {
       "file": "agentface32-v0.9.1-lilygo-t-display-ota.bin",
-      "size": 1209968
+      "size": 1210032
     },
     "m5stack-basic": {
       "file": "agentface32-v0.9.1-m5stack-basic-ota.bin",
-      "size": 1621728
+      "size": 1621792
     }
   }
 }

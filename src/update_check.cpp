@@ -17,8 +17,11 @@
 // Small generated manifest in the repository. It avoids the 27 KB GitHub
 // releases API response and its 60 requests/hour rate limit, which matters on
 // an ESP32 with a TLS session in RAM.
+#ifndef AGENTFACE_UPDATE_MANIFEST
+#define AGENTFACE_UPDATE_MANIFEST "update.json"
+#endif
 static const char* kManifestUrl =
-    "https://raw.githubusercontent.com/zxkill/agentface32/main/update.json";
+    "https://raw.githubusercontent.com/zxkill/agentface32/main/" AGENTFACE_UPDATE_MANIFEST;
 static const char* kReleaseBase =
     "https://github.com/zxkill/agentface32/releases/download/v";
 
@@ -119,39 +122,6 @@ static bool versionNewer(const String& latest, const String& current) {
   }
   return false;
 }
-
-class OtaSink : public Stream {
- public:
-  explicit OtaSink(size_t expected) : expected_(expected) {}
-
-  size_t write(uint8_t value) override { return write(&value, 1); }
-
-  size_t write(const uint8_t* data, size_t len) override {
-    if (!otaWrite(data, len)) {
-      ok_ = false;
-      return 0;
-    }
-    written_ += len;
-    const uint8_t percent = expected_ ? (uint8_t)min((size_t)99, (written_ * 100) / expected_) : 0;
-    if (percent >= lastPercent_ + 2 || percent == 99) {
-      lastPercent_ = percent;
-      report(UpdateStage::Downloading, percent);
-    }
-    return len;
-  }
-
-  int available() override { return 0; }
-  int read() override { return -1; }
-  int peek() override { return -1; }
-  void flush() override {}
-  bool ok() const { return ok_; }
-
- private:
-  size_t expected_;
-  size_t written_ = 0;
-  uint8_t lastPercent_ = 0;
-  bool ok_ = true;
-};
 
 void updateBegin() {
   g_latestVersion = "";
@@ -297,19 +267,63 @@ bool updateInstallNow() {
   }
 
   const int contentLength = http.getSize();
+  if (contentLength <= 0 && !expected) {
+    otaAbort();
+    http.end();
+    g_error = "Update: unknown image size";
+    return false;
+  }
+  const size_t total = contentLength > 0 ? (size_t)contentLength : expected;
   if (contentLength > 0 && expected && (size_t)contentLength != expected) {
     logWarn("update", "manifest size %u != Content-Length %d", (unsigned)expected, contentLength);
   }
 
-  OtaSink sink(expected);
-  const int written = http.writeToStream(&sink);
+  // Read the body ourselves instead of HTTPClient::writeToStream(): it treats
+  // a short flash write as a transport error and retries the same block, which
+  // obscures the real OTA error and wastes time.
+  WiFiClient* stream = http.getStreamPtr();
+  uint8_t buf[1024];
+  size_t written = 0;
+  uint8_t lastPercent = 0;
+  uint32_t lastData = millis();
+  bool writeOk = true;
+
+  while (written < total) {
+    const size_t available = stream ? stream->available() : 0;
+    if (!available) {
+      if (!http.connected()) break;
+      if (millis() - lastData > 30000) {
+        logWarn("update", "download stalled at %u/%u", (unsigned)written, (unsigned)total);
+        break;
+      }
+      delay(1);
+      continue;
+    }
+    lastData = millis();
+    const size_t want = min(available, min(sizeof(buf), total - written));
+    const int read = stream->readBytes(buf, want);
+    if (read <= 0) {
+      delay(1);
+      continue;
+    }
+    if (!otaWrite(buf, (size_t)read)) {
+      writeOk = false;
+      break;
+    }
+    written += (size_t)read;
+    const uint8_t percent = (uint8_t)min((size_t)99, (written * 100) / total);
+    if (percent >= lastPercent + 2 || percent == 99) {
+      lastPercent = percent;
+      report(UpdateStage::Downloading, percent);
+    }
+  }
   http.end();
 
-  const bool complete = written >= 0 && (expected == 0 || (size_t)written == expected) && sink.ok();
-  if (!complete) {
+  if (!writeOk || written != total) {
     otaAbort();
-    g_error = written < 0 ? String("Update: download failed") : String("Update: incomplete image");
-    logWarn("update", "%s (%d/%u)", g_error.c_str(), written, (unsigned)expected);
+    g_error = writeOk ? String("Update: incomplete image") : otaLastError();
+    if (!g_error.length()) g_error = "Update: download failed";
+    logWarn("update", "%s (%u/%u)", g_error.c_str(), (unsigned)written, (unsigned)total);
     return false;
   }
   if (!otaFinish()) {
