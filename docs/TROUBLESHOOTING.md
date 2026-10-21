@@ -59,6 +59,20 @@ The URL is `http://...`, not `http\://...`.
 
 Make sure the PC and ESP32 are on the same LAN/VLAN and client isolation is not enabled on the Wi-Fi access point.
 
+## Random reboot with `LoadProhibited` in `memmove` / `String::move`
+
+This is a bug in Arduino-ESP32 2.0.x, not in AgentFace32:
+`String::move()` calls `memmove(dst, nullptr, 1)` when the source is an empty
+string, and `WebServer::_parseRequest()` does that for POST bodies. A malformed
+hook payload can therefore reboot `loopTask`.
+
+`scripts/patch_arduino_string.py` applies the upstream one-line guard to the
+installed framework before compilation and is wired into `platformio.ini`
+through `extra_scripts`. Keep it enabled and keep the platform pinned to
+`espressif32@6.6.0`; Arduino core 3.x has the fix but the resulting image does
+not fit the M5Stack's 1.875 MB OTA slot. If the patch is missing, rebuild after
+`pio run -t clean`.
+
 ## Provider hooks do not arrive
 
 - Confirm the provider is enabled: `curl http://DEVICE_IP/api/settings` (or the
