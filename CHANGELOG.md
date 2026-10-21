@@ -2,6 +2,21 @@
 
 All notable public changes are documented here.
 
+## [0.9.1] - 2026-10-21
+
+### Stability
+
+- Fixed random `LoadProhibited` reboots in `loopTask` while parsing HTTP POST
+  bodies. Arduino-ESP32 2.0.x has a `String::move()` bug that calls
+  `memmove(dst, nullptr, 1)` for an empty string; the one-line upstream fix is
+  applied to the installed core by `scripts/patch_arduino_string.py` before
+  compilation.
+- Pinned PlatformIO to `espressif32@6.6.0` (Arduino core 2.0.14). Arduino core
+  3.x contains the fix but its firmware does not fit the M5Stack's 1.875 MB OTA
+  slots.
+- Verified with 30 repeated empty/binary POST bodies: no reboot, hooks return a
+  clean `EmptyInput` error instead of panicking.
+
 ## [0.9.0] - 2026-10-20
 
 ### Updates from GitHub
